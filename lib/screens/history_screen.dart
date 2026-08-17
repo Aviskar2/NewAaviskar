@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import '../services/scan_history_service.dart';
+import 'scanner/scan_history_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   final List<Map<String, dynamic>> historyItems;
   final ValueChanged<Map<String, dynamic>> onLoadChat;
+  final ScanHistoryService? scanHistoryService;
 
   const HistoryScreen({
     Key? key,
     required this.historyItems,
     required this.onLoadChat,
+    this.scanHistoryService,
   }) : super(key: key);
 
   @override
@@ -70,6 +74,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
         centerTitle: true,
         actions: [
+          if (widget.scanHistoryService != null)
+            IconButton(
+              icon: const Icon(Icons.qr_code_scanner_rounded),
+              tooltip: 'Scan History',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ScanHistoryScreen(
+                      historyService: widget.scanHistoryService!,
+                    ),
+                  ),
+                );
+              },
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: CircleAvatar(

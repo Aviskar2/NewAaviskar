@@ -37,6 +37,29 @@ dependencies:
   file_picker: ^11.0.3
   image_picker: ^1.2.3
 
+  # QR + Barcode scanning (real-time camera & image-based)
+  mobile_scanner: ^7.4.0
+
+  # OCR — Google ML Kit on-device text recognition
+  google_mlkit_text_recognition: ^0.16.0
+
+  # On-device translation — Google ML Kit
+  google_mlkit_translation: ^0.14.0
+
+  # Runtime permissions
+  permission_handler: ^11.3.1
+
+  # Persistent scan history storage
+  shared_preferences: ^2.3.2
+
+  # File path utilities
+  path_provider: ^2.1.4
+
+  # Date formatting for history
+  intl: ^0.19.0
+  url_launcher: ^6.3.2
+  http: ^1.6.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

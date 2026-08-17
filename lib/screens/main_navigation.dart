@@ -4,6 +4,9 @@ import 'home_dashboard_screen.dart';
 import 'history_screen.dart';
 import 'updates_screen.dart';
 import 'settings_screen.dart';
+import 'scanner/ocr_screen.dart';
+import '../services/ocr_service.dart';
+import '../services/scan_history_service.dart';
 
 class MainNavigation extends StatefulWidget {
   final bool isLightMode;
@@ -21,7 +24,11 @@ class MainNavigation extends StatefulWidget {
 
 class MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
-  
+
+  // Real service instances (shared across all screens)
+  final OcrService _ocrService = OcrService();
+  final ScanHistoryService _scanHistoryService = ScanHistoryService();
+
   // Lifted Active Chat State
   List<Map<String, dynamic>> activeMessages = [];
   bool isTyping = false;
@@ -76,12 +83,20 @@ class MainNavigationState extends State<MainNavigation> {
   @override
   void initState() {
     super.initState();
+    // Load persisted scan history
+    _scanHistoryService.load();
     // Default greeting message guiding the user to upload first
     activeMessages.add({
       'isUser': false,
-      'text': 'Hello! I am Aura AI. 📄 Tap the \'+\' button below to upload a photo or document, then choose a feature (Translation, Scanner, or Documents) to process it!',
+      'text': 'Hello! I am NyayaSathi. 📄 Tap the \'+\' button below to upload a photo or document, then choose Translation, Scanner, or Documents to process it!',
       'type': 'text',
     });
+  }
+
+  @override
+  void dispose() {
+    _ocrService.close();
+    super.dispose();
   }
 
   void setTab(int index) {
@@ -158,6 +173,10 @@ class MainNavigationState extends State<MainNavigation> {
     });
   }
 
+  /// Routes the feature action to the real implementation screen.
+  /// For Scanner → OCR screen (with real ML Kit).
+  /// For Translation → OCR screen in auto-translate mode.
+  /// For Documents → keeps mock document indexing UI.
   void executeFeatureAction({
     required String feature,
     required Map<String, dynamic> document,
@@ -166,7 +185,9 @@ class MainNavigationState extends State<MainNavigation> {
     final docName = document['name'] ?? 'Document';
     final docSize = document['size'] ?? '1.2 MB';
     final docType = document['type'] ?? 'PDF Document';
+    final docPath = document['path'] as String?;
 
+    // Add user message to chat
     setState(() {
       activeMessages.add({
         'isUser': true,
@@ -175,15 +196,13 @@ class MainNavigationState extends State<MainNavigation> {
         'document': document,
         'feature': feature,
       });
-      isTyping = true;
-      typingStatus = 'Aura is executing $feature';
     });
 
     final now = DateTime.now();
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     final formattedDate = '${months[now.month - 1]} ${now.day}, ${now.year}';
 
-    // Store in customDocuments if not already there
+    // Store in customDocuments repository
     final exists = customDocuments.any((d) => d['name'] == docName);
     if (!exists) {
       customDocuments.insert(0, {
@@ -196,65 +215,89 @@ class MainNavigationState extends State<MainNavigation> {
       });
     }
 
-    Future.delayed(const Duration(milliseconds: 1400), () {
+    if (feature == 'Scanner' && docPath != null) {
+      // Route to real OCR screen
+      final context = this.context;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OcrScreen(
+            historyService: _scanHistoryService,
+            ocrService: _ocrService,
+            initialImagePath: docPath,
+          ),
+        ),
+      ).then((result) {
+        // After returning, add a chat card
+        if (mounted) {
+          setState(() {
+            activeMessages.add({
+              'isUser': false,
+              'type': 'ocr_launched',
+              'documentName': docName,
+              'message': 'OCR scan completed for $docName. Results saved to Scan History.',
+            });
+          });
+          _saveSessionToHistory('Scanner: $docName', 'OCR scan completed for $docName');
+        }
+      });
+      return;
+    }
+
+    if (feature == 'Translation' && docPath != null) {
+      // Route to OCR → auto-translate flow
+      final context = this.context;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OcrScreen(
+            historyService: _scanHistoryService,
+            ocrService: _ocrService,
+            initialImagePath: docPath,
+            autoTranslate: true,
+          ),
+        ),
+      ).then((_) {
+        if (mounted) {
+          setState(() {
+            activeMessages.add({
+              'isUser': false,
+              'type': 'translation_launched',
+              'documentName': docName,
+              'message': 'OCR + Translation completed for $docName. Results saved to Scan History.',
+            });
+          });
+          _saveSessionToHistory('Translation: $docName', 'OCR + translation completed for $docName');
+        }
+      });
+      return;
+    }
+
+    // Fallback: Documents feature or no file path → keep mock simulation
+    setState(() {
+      isTyping = true;
+      typingStatus = 'Processing $docName';
+    });
+
+    Future.delayed(const Duration(milliseconds: 1200), () {
       if (!mounted) return;
-
-      Map<String, dynamic> resultMessage = {};
-
-      if (feature == 'Translation') {
-        resultMessage = {
-          'isUser': false,
-          'type': 'translation_result',
-          'documentName': docName,
-          'sourceLang': 'Japanese (Auto-detected)',
-          'targetLang': 'English',
-          'originalSnippet': '本四半期の総収益は前年比15％増の4,500万ドルに達しました。業務効率化と国際展開が主な成長要因です。',
-          'translatedText': 'Total revenue for this quarter reached \$45 million, representing a 15% increase year-over-year. Key growth drivers were operational efficiency and international market expansion.',
-          'confidence': '99.8%',
-        };
-      } else if (feature == 'Scanner') {
-        resultMessage = {
-          'isUser': false,
-          'type': 'scanner_result',
-          'documentName': docName,
-          'scanType': docType.contains('Image') || docType.contains('Photo') ? 'Visual OCR & QR Code' : 'Structured OCR Scan',
-          'detectedCode': 'https://aura.ai/docs/verified-sync-8942',
-          'confidence': '99.4%',
-          'extractedFields': [
-            {'label': 'Invoice / Document ID', 'value': 'AURA-2026-9921'},
-            {'label': 'Date of Record', 'value': formattedDate},
-            {'label': 'Extracted Text Lines', 'value': '38 lines indexed successfully'},
-            {'label': 'Barcode / QR Payload', 'value': 'Verified Authentic (Aura-Seal)'},
-          ],
-        };
-      } else {
-        // Documents feature
-        resultMessage = {
-          'isUser': false,
-          'type': 'document_result',
-          'documentName': docName,
-          'status': 'Verified & Indexed',
-          'fileSize': docSize,
-          'fileType': docType,
-          'summary': 'Document integrity verified with SHA-256 validation. 0 compliance flags detected. Fully indexed in Aura AI local repository for contextual queries.',
-          'indexedDate': formattedDate,
-          'totalDocs': customDocuments.length,
-        };
-      }
-
+      final resultMessage = {
+        'isUser': false,
+        'type': 'document_result',
+        'documentName': docName,
+        'status': 'Verified & Indexed',
+        'fileSize': docSize,
+        'fileType': docType,
+        'summary': 'Document stored in local repository. Tap Scanner or Translation to process it further.',
+        'indexedDate': formattedDate,
+        'totalDocs': customDocuments.length,
+      };
       setState(() {
         isTyping = false;
         typingStatus = null;
         activeMessages.add(resultMessage);
       });
-
-      final historyDesc = feature == 'Translation'
-          ? 'Translated $docName to English'
-          : feature == 'Scanner'
-              ? 'Scanned $docName and extracted OCR data'
-              : 'Verified and indexed $docName into repository';
-
-      _saveSessionToHistory('$feature: $docName', historyDesc);
+      _saveSessionToHistory('Documents: $docName', 'Indexed $docName into repository');
     });
   }
 
@@ -310,11 +353,14 @@ class MainNavigationState extends State<MainNavigation> {
         onSendMessage: addMessageAndReply,
         onExecuteFeature: executeFeatureAction,
         onNavigateToTab: setTab,
+        ocrService: _ocrService,
+        historyService: _scanHistoryService,
       ),
       HistoryScreen(
         key: const ValueKey('history_tab'),
         historyItems: historyItems,
         onLoadChat: loadHistoryChat,
+        scanHistoryService: _scanHistoryService,
       ),
       UpdatesScreen(
         key: const ValueKey('updates_tab'),

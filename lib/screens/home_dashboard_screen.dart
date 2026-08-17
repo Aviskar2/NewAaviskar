@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import '../services/ocr_service.dart';
+import '../services/scan_history_service.dart';
+import 'scanner/qr_scanner_screen.dart';
+import 'scanner/ocr_screen.dart';
 
 class HomeDashboardScreen extends StatefulWidget {
   final List<Map<String, dynamic>> activeMessages;
@@ -14,6 +18,8 @@ class HomeDashboardScreen extends StatefulWidget {
     String? userPrompt,
   }) onExecuteFeature;
   final ValueChanged<int> onNavigateToTab;
+  final OcrService? ocrService;
+  final ScanHistoryService? historyService;
 
   const HomeDashboardScreen({
     Key? key,
@@ -23,6 +29,8 @@ class HomeDashboardScreen extends StatefulWidget {
     required this.onSendMessage,
     required this.onExecuteFeature,
     required this.onNavigateToTab,
+    this.ocrService,
+    this.historyService,
   }) : super(key: key);
 
   @override
@@ -295,7 +303,26 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     }
   }
 
-  // Minimal 2-option popup bottom sheet
+  /// Opens the real-time QR + Barcode scanner screen.
+  void _openQrScanner() {
+    final historyService = widget.historyService;
+    if (historyService == null) {
+      _showMinimalToast(
+        'Scanner not available',
+        Icons.error_outline,
+        Colors.redAccent,
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QrScannerScreen(historyService: historyService),
+      ),
+    );
+  }
+
+  // Upload options bottom sheet — 3 options: Gallery, Camera, QR Scanner
   void _showUploadBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -317,7 +344,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.3),
+                      color: Colors.grey.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -352,6 +379,20 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                   onTap: () {
                     Navigator.pop(context);
                     _captureFromCamera();
+                  },
+                ),
+
+                const SizedBox(height: 10),
+
+                // Option 3: QR / Barcode scanner
+                _buildMinimalOption(
+                  context,
+                  title: 'Scan QR code or barcode',
+                  icon: Icons.qr_code_scanner_rounded,
+                  iconColor: const Color(0xFF00BFA5),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openQrScanner();
                   },
                 ),
                 const SizedBox(height: 8),
