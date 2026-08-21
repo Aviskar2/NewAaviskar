@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import 'home_dashboard_screen.dart';
 import 'history_screen.dart';
 import 'updates_screen.dart';
@@ -8,8 +10,12 @@ import 'scanner/ocr_screen.dart';
 import 'scanner/scanner_hub_screen.dart';
 import 'bill_analyzer/bill_analyzer_entry_screen.dart';
 import 'legal_analyzer/legal_analyzer_entry_screen.dart';
+import 'medicine_safety/medicine_entry_screen.dart';
+import 'product_safety/product_safety_entry_screen.dart';
 import '../services/ocr_service.dart';
 import '../services/scan_history_service.dart';
+import '../services/bill_analysis_orchestrator.dart';
+import '../models/analysis_result.dart';
 
 import '../widgets/translation_mode_sheet.dart';
 
@@ -90,10 +96,17 @@ class MainNavigationState extends State<MainNavigation> {
     super.initState();
     // Load persisted scan history
     _scanHistoryService.load();
-    // Default greeting message guiding the user to upload first
+    // Welcoming greeting message introducing NyayaSathi AI and its 5 safety pillars
     activeMessages.add({
       'isUser': false,
-      'text': 'Hello! I am NyayaSathi. 📄 Tap the \'+\' button below to upload a photo or document, then choose Translation, Scanner, or Documents to process it!',
+      'text': 'Namaste! I am NyayaSathi AI 🇮🇳 — your Citizen Legal, Bill, Medicine & Product Safety Assistant.\n\n'
+          'Here is what I can do for you:\n'
+          '• ⚖️ Scan rental, loan & work contracts for scam clauses and unfair penalties\n'
+          '• 🧾 Audit restaurant & grocery bills for illegal service charges and GST errors\n'
+          '• 💊 Check Jan Aushadhi generic medicine alternatives (save up to 80%)\n'
+          '• 🥗 Audit food labels for 14-digit FSSAI licenses & high sugar/fat warnings\n'
+          '• 🌐 Live camera & image OCR translation across 12+ Indian languages\n\n'
+          'Tap any feature card above, try a sample, or ask me any consumer rights question below!',
       'type': 'text',
     });
   }
@@ -130,38 +143,70 @@ class MainNavigationState extends State<MainNavigation> {
         'type': 'text',
       });
       isTyping = true;
-      typingStatus = 'Aura is analyzing';
+      typingStatus = 'NyayaSathi is analyzing';
     });
 
     _simulateAiReply(userMessage);
   }
 
   void _simulateAiReply(String userMessage) {
-    Future.delayed(const Duration(milliseconds: 1200), () {
+    Future.delayed(const Duration(milliseconds: 1000), () {
       if (!mounted) return;
 
       String reply = "";
       final lowerMsg = userMessage.toLowerCase();
 
-      if (lowerMsg.contains('translate') || lowerMsg.contains('japanese') || lowerMsg.contains('spanish')) {
-        reply = "Translation engine ready! Tap '+' below to attach a document or photo, then tap Translation to translate it instantly.";
-      } else if (lowerMsg.contains('ocr') || lowerMsg.contains('scan') || lowerMsg.contains('qr')) {
-        reply = "OCR Scanner ready! Tap '+' below to capture or upload an image/document, then tap Scanner to extract text and data fields.";
-      } else if (lowerMsg.contains('document') || lowerMsg.contains('track') || lowerMsg.contains('repository')) {
-        if (customDocuments.isEmpty) {
-          reply = "Your Document Repository is currently empty. Tap the '+' button below to upload a file to verify and track it.";
-        } else {
-          final count = customDocuments.length;
-          final docList = customDocuments
-              .take(3)
-              .map((d) => "• ${d['name']} (${d['status']})")
-              .join('\n');
-          reply = "You currently have $count document(s) in your repository:\n\n$docList\n\nUpload another document or select 'Documents' to track more.";
-        }
-      } else if (lowerMsg.contains('hello') || lowerMsg.contains('hi') || lowerMsg.contains('hey')) {
-        reply = "Hello! Upload a photo or document using the '+' button below and choose Translation, Scanner, or Documents to get started.";
+      if (lowerMsg.contains('service charge') || (lowerMsg.contains('restaurant') && lowerMsg.contains('charge'))) {
+        reply = "🚫 Restaurant Service Charge Rights in India:\n\n"
+            "• Under CCPA Guidelines (July 2022), no hotel or restaurant can add service charge automatically or by default in the bill.\n"
+            "• Service charge is purely voluntary and optional. You have the full right to ask them to remove it.\n"
+            "• If they refuse to remove it, you can lodge a formal complaint on the National Consumer Helpline at 1915 or file on e-Daakhil.\n\n"
+            "👉 Tap 'Bill Analyzer' to scan your bill and detect illegal service charges automatically!";
+      } else if (lowerMsg.contains('rent') || lowerMsg.contains('deposit') || lowerMsg.contains('tenant') || lowerMsg.contains('landlord')) {
+        reply = "🏠 Tenant Rights & Security Deposit Rules in India:\n\n"
+            "• Under the Model Tenancy Act & Indian Contract Act (Sec 73/74), landlords cannot arbitrarily forfeit your full security deposit.\n"
+            "• Deductions must be substantiated with itemized repair receipts for actual damages (normal wear & tear is excluded).\n"
+            "• Notice period for termination must be mutual and reasonable (typically 30 days).\n\n"
+            "👉 Tap 'Legal Analyzer' above to audit your Rental Agreement for unfair forfeiture clauses!";
+      } else if (lowerMsg.contains('generic') || lowerMsg.contains('jan aushadhi') || lowerMsg.contains('dolo') || lowerMsg.contains('medicine') || lowerMsg.contains('paracetamol')) {
+        reply = "💊 Jan Aushadhi (PMBJP) Medicine Savings:\n\n"
+            "• Pradhan Mantri Bhartiya Janaushadhi Pariyojana provides identical therapeutic generic salts at 50% to 80% lower cost than branded medicines.\n"
+            "• Example: Paracetamol 650mg generic costs ~₹1.20/strip vs branded Dolo 650 at ~₹34.00.\n"
+            "• Over 10,000+ Jan Aushadhi Kendras are available across India.\n\n"
+            "👉 Tap 'Medicine Safety' above to scan any medicine strip and discover generic alternatives!";
+      } else if (lowerMsg.contains('fssai') || lowerMsg.contains('food') || lowerMsg.contains('expiry') || lowerMsg.contains('sugar')) {
+        reply = "🥗 Food Safety & FSSAI Standards in India:\n\n"
+            "• Every packaged food in India must carry a valid 14-digit FSSAI License Number (FSS Act 2006).\n"
+            "• Products must clearly declare Expiry / Best Before date, allergen info, and Vegetarian (Green Dot) / Non-Veg (Brown Dot) symbol.\n"
+            "• Under FSSAI HFSS regulations, foods with high added sugar (>10g/100ml) or high sodium (>600mg) require caution.\n\n"
+            "👉 Tap 'Product Safety' above to scan food packaging!";
+      } else if (lowerMsg.contains('helpline') || lowerMsg.contains('complaint') || lowerMsg.contains('consumer court') || lowerMsg.contains('1915')) {
+        reply = "📞 Official Consumer Redressal Helplines in India:\n\n"
+            "• National Consumer Helpline (NCH): Call Toll-Free 1915 or SMS 8800001915\n"
+            "• Consumer Complaints Online: consumerhelpline.gov.in\n"
+            "• Online Consumer Court Case Filing: edaakhil.nic.in\n"
+            "• GST Fraud & Fake Invoices Reporting: cbic-gst.gov.in / reportfakegst@gov.in\n"
+            "• National Food Safety Toll-Free: 1800-112-100 (FSSAI)";
+      } else if (lowerMsg.contains('translate') || lowerMsg.contains('hindi') || lowerMsg.contains('tamil') || lowerMsg.contains('telugu') || lowerMsg.contains('marathi') || lowerMsg.contains('language')) {
+        reply = "🌐 AI Live Translator & OCR Engine:\n\n"
+            "• Supports on-device translation across English, Hindi, Marathi, Tamil, Telugu, Bengali, Gujarati, Kannada, Malayalam, Punjabi, Urdu, and more.\n"
+            "• Choose Text Translation or Image Overlay Translation (translates text directly superimposed over photos).\n\n"
+            "👉 Tap 'Live Translator' above or '+' below to translate any document or signboard!";
+      } else if (lowerMsg.contains('ocr') || lowerMsg.contains('scan') || lowerMsg.contains('qr') || lowerMsg.contains('barcode')) {
+        reply = "🔍 Universal Scanner Ready:\n\n"
+            "• Scan QR codes, UPI barcodes, GS1 Made-in-India barcodes (890 prefix), or extract text from photos.\n\n"
+            "👉 Tap 'Scanner' above to open the camera scanner instantly!";
+      } else if (lowerMsg.contains('hello') || lowerMsg.contains('hi') || lowerMsg.contains('namaste') || lowerMsg.contains('help')) {
+        reply = "Namaste! I am ready to help. You can:\n\n"
+            "1. 📜 Scan a legal contract (Rental, Employment, Loan)\n"
+            "2. 🧾 Verify a bill or invoice for GST fraud & hidden fees\n"
+            "3. 💊 Check medicine strip for Jan Aushadhi generic alternatives\n"
+            "4. 🥗 Audit food/product packaging for FSSAI & expiry\n"
+            "5. 🌐 Translate any text or image into your native language\n\n"
+            "What would you like to start with?";
       } else {
-        reply = "I've received your query: \"$userMessage\". To process a document or photo, attach it using '+' below and choose one of the three features.";
+        reply = "I understand your query: \"$userMessage\".\n\n"
+            "To analyze a document, bill, medicine strip, or food packet, tap the '+' button below or choose one of the 5 safety tools above. You can also ask me specific questions about Indian consumer law, GST, or tenant rights!";
       }
 
       setState(() {
@@ -179,9 +224,6 @@ class MainNavigationState extends State<MainNavigation> {
   }
 
   /// Routes the feature action to the real implementation screen.
-  /// For Scanner → OCR screen (with real ML Kit).
-  /// For Translation → OCR screen in auto-translate mode.
-  /// For Documents → keeps mock document indexing UI.
   void executeFeatureAction({
     required String feature,
     required Map<String, dynamic> document,
@@ -248,7 +290,7 @@ class MainNavigationState extends State<MainNavigation> {
       return;
     }
 
-    if (feature == 'Translation') {
+    if (feature == 'Translation' || feature == 'Translate') {
       // Open 2-Option Translation Selector (Text Translation vs. Image Translation)
       final context = this.context;
       TranslationModeSheet.show(
@@ -273,8 +315,7 @@ class MainNavigationState extends State<MainNavigation> {
       return;
     }
 
-    if (feature == 'Bill Analyzer') {
-      // Open Bill Analyzer entry screen directly
+    if (feature == 'Bill Analyzer' || feature == 'Bill' || feature == 'GST') {
       final context = this.context;
       Navigator.push(
         context,
@@ -282,26 +323,16 @@ class MainNavigationState extends State<MainNavigation> {
           builder: (_) => BillAnalyzerEntryScreen(
             ocrService: _ocrService,
             historyService: _scanHistoryService,
-            existingOcrResult: null,
           ),
         ),
-      ).then((_) {
-        if (mounted) {
-          setState(() {
-            activeMessages.add({
-              'isUser': false,
-              'type': 'text',
-              'text': 'Bill analysis complete. Check the results for GST verification and charge details.',
-            });
-          });
-        }
-      });
+      );
       return;
     }
 
     if (feature == 'Document Analyzer' ||
         feature == 'Legal Analyzer' ||
-        feature == 'Legal Risk') {
+        feature == 'Legal Risk' ||
+        feature == 'Legal') {
       // Open Document Risk & Scam Analyzer entry screen directly
       final context = this.context;
       Navigator.push(
@@ -326,34 +357,40 @@ class MainNavigationState extends State<MainNavigation> {
       return;
     }
 
-    if (feature == 'Product Safety' ||
-        feature == 'Food Safety' ||
-        feature == 'Product' ||
-        feature == 'Medicine' ||
+    if (feature == 'Medicine' ||
         feature == 'Medicine Safety' ||
-        feature == 'Pharma') {
-      // Open Universal Product & Safety Scanner tab directly
+        feature == 'Pharma' ||
+        feature == 'Jan Aushadhi') {
+      // Open Medicine Safety Screen directly
       final context = this.context;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => ScannerHubScreen(
+          builder: (_) => MedicineEntryScreen(
             ocrService: _ocrService,
             historyService: _scanHistoryService,
-            initialTab: 1,
           ),
         ),
-      ).then((_) {
-        if (mounted) {
-          setState(() {
-            activeMessages.add({
-              'isUser': false,
-              'type': 'text',
-              'text': 'Universal Product & Safety audit complete.',
-            });
-          });
-        }
-      });
+      );
+      return;
+    }
+
+    if (feature == 'Product Safety' ||
+        feature == 'Food Safety' ||
+        feature == 'Product' ||
+        feature == 'Food' ||
+        feature == 'FSSAI') {
+      // Open Product & Food Safety Screen directly
+      final context = this.context;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProductSafetyEntryScreen(
+            ocrService: _ocrService,
+            historyService: _scanHistoryService,
+          ),
+        ),
+      );
       return;
     }
 
@@ -420,6 +457,204 @@ class MainNavigationState extends State<MainNavigation> {
         });
       }
     });
+  }
+
+  // ─── Bill Analyzer Inline Flow ──────────────────────────────────────────
+
+  void _showBillAnalyzerPicker() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: theme.dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Scan Bill',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Take a photo or pick from gallery',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _billPickerOption(
+                        ctx,
+                        icon: Icons.camera_alt_rounded,
+                        label: 'Camera',
+                        onTap: () => Navigator.pop(ctx, ImageSource.camera),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _billPickerOption(
+                        ctx,
+                        icon: Icons.photo_library_rounded,
+                        label: 'Gallery',
+                        onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    ).then((source) {
+      if (source != null && source is ImageSource) {
+        _processBillInline(source);
+      }
+    });
+  }
+
+  Widget _billPickerOption(BuildContext ctx, {required IconData icon, required String label, required VoidCallback onTap}) {
+    final theme = Theme.of(ctx);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 28, color: theme.colorScheme.primary),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.primary)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _processBillInline(ImageSource source) async {
+    // Add user message
+    setState(() {
+      activeMessages.add({
+        'isUser': true,
+        'type': 'upload',
+        'document': {'name': source == ImageSource.camera ? 'Bill (Camera)' : 'Bill (Gallery)'},
+        'feature': 'Bill Analyzer',
+      });
+      isTyping = true;
+      typingStatus = 'Scanning bill...';
+    });
+
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: source, imageQuality: 85);
+      if (pickedFile == null) {
+        setState(() {
+          isTyping = false;
+          typingStatus = null;
+          activeMessages.add({
+            'isUser': false,
+            'type': 'text',
+            'text': 'No image selected. Please try again.',
+          });
+        });
+        return;
+      }
+
+      // Update status
+      setState(() {
+        typingStatus = 'Reading text with OCR...';
+      });
+
+      // Run OCR
+      final ocrResult = await _ocrService.recognizeFromPath(pickedFile.path);
+
+      if (ocrResult.isEmpty) {
+        setState(() {
+          isTyping = false;
+          typingStatus = null;
+          activeMessages.add({
+            'isUser': false,
+            'type': 'text',
+            'text': 'Could not read any text from the bill. Please try a clearer image.',
+          });
+        });
+        return;
+      }
+
+      // Update status
+      setState(() {
+        typingStatus = 'Analyzing GST, charges & fraud patterns...';
+      });
+
+      // Run bill analysis
+      final orchestrator = BillAnalysisOrchestrator();
+      final result = await orchestrator.analyze(
+        ocrResult.fullText,
+        imagePath: pickedFile.path,
+      );
+
+      // Save to history
+      _saveSessionToHistory('Bill: ${result.bill.sellerName ?? "Unknown"}', result.overallLabel);
+
+      // Inject result into chat
+      setState(() {
+        isTyping = false;
+        typingStatus = null;
+        activeMessages.add({
+          'isUser': false,
+          'type': 'bill_analysis_result',
+          'billResult': result,
+          'imagePath': pickedFile.path,
+          'text': _buildBillSummaryText(result),
+        });
+      });
+    } catch (e) {
+      setState(() {
+        isTyping = false;
+        typingStatus = null;
+        activeMessages.add({
+          'isUser': false,
+          'type': 'text',
+          'text': 'Analysis failed: ${e.toString()}. Please try again.',
+        });
+      });
+    }
+  }
+
+  String _buildBillSummaryText(BillAnalysisResult result) {
+    final buf = StringBuffer();
+    buf.write('Bill analyzed');
+    if (result.bill.sellerName != null) buf.write(' from ${result.bill.sellerName}');
+    buf.write('. ${result.overallEmoji} ${result.overallLabel}.');
+    if (result.potentialExcess != null && result.potentialExcess! > 0) {
+      buf.write(' Potential excess of ₹${result.potentialExcess!.toStringAsFixed(2)} detected.');
+    }
+    final critical = result.errorFindings.length + result.suspiciousFindings.length;
+    if (critical > 0) {
+      buf.write(' $critical critical issue(s) found.');
+    }
+    return buf.toString();
   }
 
   @override

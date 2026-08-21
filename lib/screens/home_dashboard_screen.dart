@@ -4,7 +4,25 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/ocr_service.dart';
 import '../services/scan_history_service.dart';
+import '../models/analysis_result.dart';
+import '../widgets/bill_analysis/bill_analysis_inline_card.dart';
+import '../widgets/translation_mode_sheet.dart';
 import 'scanner/qr_scanner_screen.dart';
+import 'scanner/scanner_hub_screen.dart';
+import 'bill_analyzer/bill_analyzer_entry_screen.dart';
+import 'bill_analyzer/bill_analysis_screen.dart';
+import 'legal_analyzer/legal_analyzer_entry_screen.dart';
+import 'legal_analyzer/legal_analysis_screen.dart';
+import 'medicine_safety/medicine_entry_screen.dart';
+import 'medicine_safety/medicine_analysis_screen.dart';
+import 'product_safety/product_safety_entry_screen.dart';
+import 'product_safety/product_safety_analysis_screen.dart';
+import '../services/legal/legal_orchestrator.dart';
+import '../services/medicine_safety/medicine_safety_orchestrator.dart';
+import '../services/product_safety/product_safety_orchestrator.dart';
+import '../services/bill_analysis_orchestrator.dart';
+import '../models/scan_result_model.dart';
+import '../core/legal/models/legal_document_type.dart';
 
 class HomeDashboardScreen extends StatefulWidget {
   final List<Map<String, dynamic>> activeMessages;
@@ -36,13 +54,9 @@ class HomeDashboardScreen extends StatefulWidget {
   State<HomeDashboardScreen> createState() => _HomeDashboardScreenState();
 }
 
-class _HomeDashboardScreenState extends State<HomeDashboardScreen>
-    with SingleTickerProviderStateMixin {
+class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-
-  // Active feature mode: 'Translation' | 'Scanner' | 'Documents' (starts as null - none selected)
-  String? _selectedFeature;
 
   // Attached document waiting in input bar
   Map<String, dynamic>? _pendingAttachment;
@@ -77,68 +91,51 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
   void _onFeatureButtonTapped(String feature) {
     HapticFeedback.lightImpact();
 
-    // Bill Analyzer, Document Analyzer, Legal Analyzer, Product Safety, Medicine Safety, Translation, and Scanner can launch directly
-    if (feature == 'Bill Analyzer' ||
-        feature == 'Document Analyzer' ||
-        feature == 'Legal Analyzer' ||
-        feature == 'Legal Risk' ||
-        feature == 'Product Safety' ||
-        feature == 'Food Safety' ||
-        feature == 'Medicine' ||
-        feature == 'Medicine Safety' ||
-        feature == 'Pharma' ||
-        feature == 'Translation' ||
-        feature == 'Scanner') {
-      widget.onExecuteFeature(
-        feature: feature,
-        document: {},
-        userPrompt: null,
-      );
+    // If an attachment exists, execute with that attachment
+    if (_pendingAttachment != null) {
+      final prompt = _messageController.text.trim();
+      _executeWithPendingAttachment(feature, prompt: prompt.isNotEmpty ? prompt : null);
+      _messageController.clear();
       return;
     }
 
-    // If no document is attached yet:
-    if (_pendingAttachment == null) {
-      _showMinimalToast(
-        'Please upload a photo or document first to use $feature',
-        _getFeatureIcon(feature),
-        _getFeatureColor(feature),
-      );
-      _showUploadBottomSheet();
-      return;
-    }
-
-    // Document is attached! Set feature and execute immediately
-    setState(() {
-      _selectedFeature = feature;
-    });
-
-    final prompt = _messageController.text.trim();
-    _executeWithPendingAttachment(feature, prompt: prompt.isNotEmpty ? prompt : null);
-    _messageController.clear();
+    // Direct routing to the full screen
+    widget.onExecuteFeature(
+      feature: feature,
+      document: {},
+      userPrompt: null,
+    );
   }
 
   Color _getFeatureColor(String? feature) {
     switch (feature) {
       case 'Translation':
+      case 'Translate':
         return const Color(0xFF2563EB); // Electric Blue
       case 'Scanner':
+      case 'QR':
         return const Color(0xFF9D00FF); // Vibrant Purple
       case 'Documents':
-        return const Color(0xFFFF4081); // Bright Pink/Coral
+        return const Color(0xFFFF4081); // Coral / Pink
       case 'Bill Analyzer':
+      case 'Bill':
+      case 'GST':
         return const Color(0xFF16A34A); // Emerald Green
       case 'Document Analyzer':
       case 'Legal Analyzer':
       case 'Legal Risk':
+      case 'Legal':
         return const Color(0xFFDC2626); // Crimson Red
       case 'Product Safety':
       case 'Food Safety':
+      case 'Food':
+      case 'FSSAI':
         return const Color(0xFF0F766E); // Teal / Food Green
       case 'Medicine':
       case 'Medicine Safety':
       case 'Pharma':
-        return const Color(0xFF991B1B); // Crimson / Medicine Red
+      case 'Jan Aushadhi':
+        return const Color(0xFFBE185D); // Rose / Pharma Red
       default:
         return const Color(0xFF2563EB);
     }
@@ -147,27 +144,34 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
   IconData _getFeatureIcon(String? feature) {
     switch (feature) {
       case 'Translation':
-        return Icons.translate;
+      case 'Translate':
+        return Icons.translate_rounded;
       case 'Scanner':
-        return Icons.qr_code_scanner;
+      case 'QR':
+        return Icons.qr_code_scanner_rounded;
       case 'Documents':
-        return Icons.description;
+        return Icons.description_rounded;
       case 'Bill Analyzer':
+      case 'Bill':
+      case 'GST':
         return Icons.receipt_long_rounded;
       case 'Document Analyzer':
-        return Icons.document_scanner_rounded;
       case 'Legal Analyzer':
       case 'Legal Risk':
+      case 'Legal':
         return Icons.gavel_rounded;
       case 'Product Safety':
       case 'Food Safety':
+      case 'Food':
+      case 'FSSAI':
         return Icons.health_and_safety_rounded;
       case 'Medicine':
       case 'Medicine Safety':
       case 'Pharma':
+      case 'Jan Aushadhi':
         return Icons.medication_rounded;
       default:
-        return Icons.auto_awesome;
+        return Icons.auto_awesome_rounded;
     }
   }
 
@@ -178,12 +182,12 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 15),
+            Icon(icon, color: Colors.white, size: 16),
             const SizedBox(width: 8),
             Flexible(
               child: Text(
                 message,
-                style: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w600, color: Colors.white),
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.white),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -191,10 +195,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
         ),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
-        elevation: 2,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        margin: const EdgeInsets.only(bottom: 12, left: 36, right: 36),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        elevation: 3,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        margin: const EdgeInsets.only(bottom: 16, left: 24, right: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         duration: const Duration(milliseconds: 2400),
       ),
     );
@@ -204,15 +208,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     final text = _messageController.text.trim();
 
     if (_pendingAttachment != null) {
-      if (_selectedFeature == null) {
-        _showMinimalToast(
-          'Please select a feature (Translation, Scanner, or Documents) above',
-          Icons.touch_app_outlined,
-          Theme.of(context).colorScheme.primary,
-        );
-        return;
-      }
-      _executeWithPendingAttachment(_selectedFeature!, prompt: text.isNotEmpty ? text : null);
+      _executeWithPendingAttachment('Legal Analyzer', prompt: text.isNotEmpty ? text : null);
       _messageController.clear();
       return;
     }
@@ -227,7 +223,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     final doc = _pendingAttachment!;
     setState(() {
       _pendingAttachment = null;
-      _selectedFeature = null; // reset selection after processing
     });
     widget.onExecuteFeature(
       feature: feature,
@@ -236,7 +231,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     );
   }
 
-  // Option 1: Add photo or document from gallery/storage
+  // Option 1: Gallery or files
   Future<void> _pickFromGalleryOrFiles() async {
     try {
       final result = await FilePicker.pickFiles(
@@ -265,8 +260,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
           docType = 'Photo / Image';
         } else if (['doc', 'docx'].contains(ext)) {
           docType = 'Word Document';
-        } else if (['xls', 'xlsx', 'csv'].contains(ext)) {
-          docType = 'Spreadsheet';
         } else {
           docType = 'Document';
         }
@@ -280,12 +273,11 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
 
         setState(() {
           _pendingAttachment = docData;
-          _selectedFeature = null;
         });
 
         if (mounted) {
           _showMinimalToast(
-            'File attached! Tap Translation, Scanner, or Documents above to process',
+            'Attached "$name". Select an analyzer above or send to process.',
             Icons.check_circle_outline,
             Theme.of(context).colorScheme.primary,
           );
@@ -298,7 +290,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     }
   }
 
-  // Option 2: Directly open camera and click photo
+  // Option 2: Camera capture
   Future<void> _captureFromCamera() async {
     try {
       final picker = ImagePicker();
@@ -331,12 +323,11 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
 
         setState(() {
           _pendingAttachment = docData;
-          _selectedFeature = null;
         });
 
         if (mounted) {
           _showMinimalToast(
-            'Photo captured! Tap Translation, Scanner, or Documents above to process',
+            'Photo captured! Select an analyzer above or send.',
             Icons.check_circle_outline,
             Theme.of(context).colorScheme.primary,
           );
@@ -349,15 +340,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     }
   }
 
-  /// Opens the real-time QR + Barcode scanner screen.
   void _openQrScanner() {
     final historyService = widget.historyService;
     if (historyService == null) {
-      _showMinimalToast(
-        'Scanner not available',
-        Icons.error_outline,
-        Colors.redAccent,
-      );
+      _showMinimalToast('Scanner not available', Icons.error_outline, Colors.redAccent);
       return;
     }
     Navigator.push(
@@ -368,13 +354,13 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     );
   }
 
-  // Upload options bottom sheet — 3 options: Gallery, Camera, QR Scanner
+  // Upload options bottom sheet
   void _showUploadBottomSheet() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
         final theme = Theme.of(context);
@@ -387,7 +373,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
               children: [
                 Center(
                   child: Container(
-                    width: 36,
+                    width: 40,
                     height: 4,
                     decoration: BoxDecoration(
                       color: Colors.grey.withValues(alpha: 0.3),
@@ -395,17 +381,18 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 Text(
-                  'Add Document or Photo',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  'Add Document, Bill or Photo',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 17),
                 ),
                 const SizedBox(height: 14),
 
                 // Option 1: Gallery / Files
-                _buildMinimalOption(
+                _buildSheetOption(
                   context,
-                  title: 'Add photo or document from gallery',
+                  title: 'Upload Photo or Document from Gallery / Files',
+                  subtitle: 'PDF contracts, receipts, medicine strips or labels',
                   icon: Icons.photo_library_outlined,
                   iconColor: const Color(0xFF2563EB),
                   onTap: () {
@@ -416,12 +403,13 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
 
                 const SizedBox(height: 10),
 
-                // Option 2: Directly open camera
-                _buildMinimalOption(
+                // Option 2: Camera
+                _buildSheetOption(
                   context,
-                  title: 'Directly open camera and click photo',
+                  title: 'Capture with Camera',
+                  subtitle: 'Take a clear photo of contract, bill, or product packaging',
                   icon: Icons.camera_alt_outlined,
-                  iconColor: const Color(0xFF9D00FF),
+                  iconColor: const Color(0xFF16A34A),
                   onTap: () {
                     Navigator.pop(context);
                     _captureFromCamera();
@@ -430,18 +418,19 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
 
                 const SizedBox(height: 10),
 
-                // Option 3: QR / Barcode scanner
-                _buildMinimalOption(
+                // Option 3: QR / Barcode
+                _buildSheetOption(
                   context,
-                  title: 'Scan QR code or barcode',
+                  title: 'Scan QR Code or Barcode',
+                  subtitle: 'Instant barcode verification & product lookups',
                   icon: Icons.qr_code_scanner_rounded,
-                  iconColor: const Color(0xFF00BFA5),
+                  iconColor: const Color(0xFF9D00FF),
                   onTap: () {
                     Navigator.pop(context);
                     _openQrScanner();
                   },
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
               ],
             ),
           ),
@@ -450,9 +439,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     );
   }
 
-  Widget _buildMinimalOption(
+  Widget _buildSheetOption(
     BuildContext context, {
     required String title,
+    required String subtitle,
     required IconData icon,
     required Color iconColor,
     required VoidCallback onTap,
@@ -462,12 +452,12 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF22062C) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF),
           ),
@@ -475,190 +465,250 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(9),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.12),
+                color: iconColor.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: iconColor, size: 20),
+              child: Icon(icon, color: iconColor, size: 22),
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                title,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13.5,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Icon(Icons.chevron_right, size: 20, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.4)),
+            Icon(Icons.chevron_right, size: 20, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
           ],
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  // ─── Help & Feature Guide Modal ──────────────────────────────────────────
+  void _showHelpGuideSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          maxChildSize: 0.95,
+          minChildSize: 0.5,
+          expand: false,
+          builder: (_, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '🛡️ How NyayaSathi AI Protects You',
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Your citizen safety assistant powered by Indian law & determinism',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 18),
+
+                  _buildHelpPillarItem(
+                    title: '1. Legal & Contract Risk Analyzer',
+                    subtitle: 'Scans rental leases, employment bonds & builder agreements. Detects illegal forfeiture, non-compete void clauses (Sec 27), and RERA violations.',
+                    icon: Icons.gavel_rounded,
+                    color: const Color(0xFFDC2626),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildHelpPillarItem(
+                    title: '2. Bill & GST Fraud Detector',
+                    subtitle: 'Verifies 15-digit GSTIN, audits CGST/SGST/IGST tax math, and flags illegal mandatory restaurant service charges (CCPA 2022).',
+                    icon: Icons.receipt_long_rounded,
+                    color: const Color(0xFF16A34A),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildHelpPillarItem(
+                    title: '3. Medicine & Generic Savings (PMBJP)',
+                    subtitle: 'Finds therapeutic generic alternatives at Jan Aushadhi Kendras (save 50-80%), checks Drug Schedules (H, H1, X) & expiry dates.',
+                    icon: Icons.medication_rounded,
+                    color: const Color(0xFFBE185D),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildHelpPillarItem(
+                    title: '4. Food & Product Safety (FSSAI)',
+                    subtitle: 'Audits 14-digit FSSAI licenses, high sugar/fat traffic light alerts, banned additives & Made-in-India 890 GS1 barcodes.',
+                    icon: Icons.health_and_safety_rounded,
+                    color: const Color(0xFF0F766E),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildHelpPillarItem(
+                    title: '5. AI Live Translator & OCR Vision',
+                    subtitle: 'Translates printed/handwritten documents and camera overlays across 12+ Indian languages (Hindi, Tamil, Telugu, Marathi, etc.).',
+                    icon: Icons.translate_rounded,
+                    color: const Color(0xFF2563EB),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2563EB).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.phone_in_talk_rounded, color: Color(0xFF2563EB), size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text('National Consumer Helpline: 1915', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              SizedBox(height: 2),
+                              Text('Toll-free consumer grievance redressal by Govt of India.', style: TextStyle(fontSize: 11.5)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildHelpPillarItem({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+  }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.menu, color: theme.colorScheme.primary),
-          onPressed: () {
-            _showMinimalToast('Workspace Menu', Icons.menu, theme.colorScheme.primary);
-          },
-        ),
-        title: Text(
-          'Aura AI',
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.bold,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? color.withValues(alpha: 0.1) : color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 20),
           ),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.help_outline, color: theme.colorScheme.primary),
-            onPressed: () {
-              _showMinimalToast('Select Translation, Scanner, or Documents above', Icons.help_outline, theme.colorScheme.primary);
-            },
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: color)),
+                const SizedBox(height: 4),
+                Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(height: 1.4, fontSize: 12)),
+              ],
+            ),
           ),
         ],
       ),
-      body: SafeArea(
+    );
+  }
+
+  // ─── App Navigation Drawer ───────────────────────────────────────────────
+  Widget _buildAppDrawer(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Drawer(
+      child: SafeArea(
         child: Column(
           children: [
-            // Top Section: Interactive Feature Highlight Buttons
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // Drawer Header
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary,
+                    const Color(0xFF1E40AF),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Row(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Aura Assistant',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _selectedFeature != null
-                              ? _getFeatureColor(_selectedFeature!).withValues(alpha: 0.12)
-                              : (_pendingAttachment != null
-                                  ? theme.colorScheme.primary.withValues(alpha: 0.15)
-                                  : (isDark ? const Color(0xFF2A0B35) : const Color(0xFFEBF1FF))),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _selectedFeature != null
-                                ? _getFeatureColor(_selectedFeature!).withValues(alpha: 0.3)
-                                : (_pendingAttachment != null
-                                    ? theme.colorScheme.primary.withValues(alpha: 0.4)
-                                    : (isDark ? const Color(0xFF3B1547) : const Color(0xFFD4E2FF))),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: _selectedFeature != null
-                                    ? _getFeatureColor(_selectedFeature!)
-                                    : (_pendingAttachment != null
-                                        ? theme.colorScheme.primary
-                                        : theme.colorScheme.outline),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _selectedFeature != null
-                                  ? '$_selectedFeature Active'
-                                  : (_pendingAttachment != null
-                                      ? 'File Ready • Pick Feature'
-                                      : 'Upload to Begin'),
-                              style: TextStyle(
-                                color: _selectedFeature != null
-                                    ? _getFeatureColor(_selectedFeature!)
-                                    : (_pendingAttachment != null
-                                        ? theme.colorScheme.primary
-                                        : theme.colorScheme.onSurfaceVariant),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Center(
+                      child: Icon(Icons.security_rounded, color: theme.colorScheme.primary, size: 28),
+                    ),
                   ),
-                  const SizedBox(height: 10),
-
-                  // Smooth Highlightable Feature Buttons (Horizontal Scroll)
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 145,
-                          child: _buildSmoothFeatureButton(
-                            label: 'Document Analyzer',
-                            icon: Icons.document_scanner_rounded,
-                            featureKey: 'Document Analyzer',
-                            accentColor: const Color(0xFFDC2626),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'NyayaSathi AI',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 105,
-                          child: _buildSmoothFeatureButton(
-                            label: 'Bill',
-                            icon: Icons.receipt_long_rounded,
-                            featureKey: 'Bill Analyzer',
-                            accentColor: const Color(0xFF16A34A),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 105,
-                          child: _buildSmoothFeatureButton(
-                            label: 'Translation',
-                            icon: Icons.translate,
-                            featureKey: 'Translation',
-                            accentColor: const Color(0xFF2563EB),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 100,
-                          child: _buildSmoothFeatureButton(
-                            label: 'Scanner',
-                            icon: Icons.qr_code_scanner,
-                            featureKey: 'Scanner',
-                            accentColor: const Color(0xFF9D00FF),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 105,
-                          child: _buildSmoothFeatureButton(
-                            label: 'Documents',
-                            icon: Icons.description,
-                            featureKey: 'Documents',
-                            accentColor: const Color(0xFFFF4081),
+                        SizedBox(height: 2),
+                        Text(
+                          'Citizen Safety Hub 🇮🇳',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
                           ),
                         ),
                       ],
@@ -668,7 +718,386 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
               ),
             ),
 
-            const SizedBox(height: 4),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                children: [
+                  _buildDrawerTile(
+                    title: 'Legal & Contract Analyzer',
+                    icon: Icons.gavel_rounded,
+                    color: const Color(0xFFDC2626),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onFeatureButtonTapped('Legal Analyzer');
+                    },
+                  ),
+                  _buildDrawerTile(
+                    title: 'Bill & GST Fraud Detector',
+                    icon: Icons.receipt_long_rounded,
+                    color: const Color(0xFF16A34A),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onFeatureButtonTapped('Bill Analyzer');
+                    },
+                  ),
+                  _buildDrawerTile(
+                    title: 'Medicine & Pharma Safety',
+                    icon: Icons.medication_rounded,
+                    color: const Color(0xFFBE185D),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onFeatureButtonTapped('Medicine Safety');
+                    },
+                  ),
+                  _buildDrawerTile(
+                    title: 'Food & Product Safety (FSSAI)',
+                    icon: Icons.health_and_safety_rounded,
+                    color: const Color(0xFF0F766E),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onFeatureButtonTapped('Product Safety');
+                    },
+                  ),
+                  _buildDrawerTile(
+                    title: 'Live Camera Translator',
+                    icon: Icons.translate_rounded,
+                    color: const Color(0xFF2563EB),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onFeatureButtonTapped('Translation');
+                    },
+                  ),
+                  _buildDrawerTile(
+                    title: 'QR & Barcode Scanner',
+                    icon: Icons.qr_code_scanner_rounded,
+                    color: const Color(0xFF9D00FF),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onFeatureButtonTapped('Scanner');
+                    },
+                  ),
+                  const Divider(height: 24),
+                  _buildDrawerTile(
+                    title: 'Scan History',
+                    icon: Icons.history_rounded,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onNavigateToTab(1);
+                    },
+                  ),
+                  _buildDrawerTile(
+                    title: 'Safety Updates & Alerts',
+                    icon: Icons.notifications_none_rounded,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onNavigateToTab(2);
+                    },
+                  ),
+                  _buildDrawerTile(
+                    title: 'Settings & Theme',
+                    icon: Icons.settings_outlined,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onNavigateToTab(3);
+                    },
+                  ),
+                  const Divider(height: 24),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E0C2B) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text('Helpline Directory', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          SizedBox(height: 4),
+                          Text('• Consumer Helpline: 1915\n• Food Safety (FSSAI): 1800-112-100\n• Cyber Crime: 1930', style: TextStyle(fontSize: 11, height: 1.4)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerTile({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: color, size: 22),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+      onTap: onTap,
+      dense: true,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+
+  // ─── Instant Sample Preset Testers ───────────────────────────────────────
+  void _runSampleRentalAgreement() {
+    final orchestrator = LegalOrchestrator();
+    const text = '''
+RESIDENTIAL LEASE AGREEMENT
+This Agreement made on 15th Day of March, 2024 between Mr. Rajesh Sharma (Lessor) and Priya Verma (Lessee).
+
+1. PREMISES: Flat 402, Sunshine Heights, Mumbai. Monthly rent of Rs. 35,000.
+2. SECURITY DEPOSIT: Lessee deposits Rs. 2,50,000. In case of any dispute, the security deposit is strictly non-refundable and the Lessor shall forfeit the entire deposit without inquiry.
+3. TERMINATION: The Lessor reserves the right to terminate immediately without notice or cause.
+4. LATE PAYMENT: Penalty of Rs. 10,000 plus interest @ 24% per annum.
+5. RESTRICTIONS: Lessee agrees not to practice any profession from home.
+''';
+    final doc = orchestrator.createDocumentFromText(text);
+    orchestrator.analyze(doc, forcedType: LegalDocumentType.rentalAgreement).then((result) {
+      if (mounted) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => LegalAnalysisScreen(result: result)));
+      }
+    });
+  }
+
+  void _runSampleRestaurantBill() {
+    final orchestrator = BillAnalysisOrchestrator();
+    const text = '''
+SPICE VILLA RESTAURANT & BAR
+GSTIN: 27AABCS1429B1Z1
+Invoice No: SV-2026/894
+Date: 20/02/2026
+
+Items:
+1. Butter Chicken (Full)      1 x 450.00 = 450.00
+2. Garlic Naan               3 x  60.00 = 180.00
+3. Dal Makhani               1 x 280.00 = 280.00
+4. Mineral Water             2 x  40.00 =  80.00
+
+Subtotal:                                990.00
+Service Charge (10% Mandatory):           99.00
+Taxable Amount:                         1089.00
+CGST @ 2.5%:                              27.23
+SGST @ 2.5%:                              27.23
+Total GST:                                54.46
+
+Grand Total:                            1143.46
+Rounded Total:                          1144.00
+''';
+    orchestrator.analyze(text).then((result) {
+      if (mounted) {
+        final histService = widget.historyService ?? ScanHistoryService();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BillAnalysisScreen(
+              result: result,
+              historyService: histService,
+            ),
+          ),
+        );
+      }
+    });
+  }
+
+  void _runSampleDolo650() {
+    final orchestrator = MedicineSafetyOrchestrator();
+    const text = '''
+DOLO 650 TABLETS
+Each uncoated tablet contains:
+Paracetamol IP 650 mg
+Mfg. Lic. No.: G/25/1458
+B.No.: DL9042
+MFD.: 01/2026
+EXP.: 12/2028
+MRP Rs. 34.00 (Incl. of all taxes)
+Manufactured in India by: Micro Labs Limited, Gujarat.
+''';
+    orchestrator.analyze(text).then((report) {
+      if (mounted) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => MedicineAnalysisScreen(report: report)));
+      }
+    });
+  }
+
+  void _runSampleHighSugarDrink() {
+    final orchestrator = ProductSafetyOrchestrator();
+    const text = '''
+REAL MANGO NECTAR BEVERAGE
+Mfg Dt: 10/01/2026
+EXP: 10/10/2026
+Barcode: 8901491102034
+FSSAI Lic No: 10012011000168
+NUTRITIONAL INFORMATION (Per 100ml):
+Energy: 65 kcal
+Total Sugars: 15.0g
+Added Sugars: 13.5g
+Sodium: 15mg
+Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
+''';
+    orchestrator.analyze(text, rawBarcode: '8901491102034').then((report) {
+      if (mounted) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ProductSafetyAnalysisScreen(report: report)));
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Scaffold(
+      drawer: _buildAppDrawer(context),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: Icon(Icons.menu_rounded, color: theme.colorScheme.primary),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+            tooltip: 'Navigation Menu',
+          ),
+        ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.security_rounded, color: theme.colorScheme.primary, size: 20),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'NyayaSathi AI',
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w800,
+                fontSize: 19,
+              ),
+            ),
+          ],
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.help_outline_rounded, color: theme.colorScheme.primary),
+            onPressed: () => _showHelpGuideSheet(context),
+            tooltip: 'Feature Guide & Help',
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Top Section: 5 Core Safety Pillars
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Universal Safety Tools',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: theme.colorScheme.onSurface,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF16A34A).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.check_circle, size: 10, color: Color(0xFF16A34A)),
+                            SizedBox(width: 4),
+                            Text(
+                              '5 Offline Analyzers Ready',
+                              style: TextStyle(
+                                color: Color(0xFF16A34A),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // 5 Main Pillar Cards (Horizontal Scroll)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: [
+                        _buildHeroFeatureCard(
+                          title: 'Legal Risk',
+                          subtitle: 'Contracts & Scams',
+                          icon: Icons.gavel_rounded,
+                          color: const Color(0xFFDC2626),
+                          featureKey: 'Legal Analyzer',
+                        ),
+                        const SizedBox(width: 8),
+                        _buildHeroFeatureCard(
+                          title: 'Bill & GST',
+                          subtitle: 'Audit Tax & Charges',
+                          icon: Icons.receipt_long_rounded,
+                          color: const Color(0xFF16A34A),
+                          featureKey: 'Bill Analyzer',
+                        ),
+                        const SizedBox(width: 8),
+                        _buildHeroFeatureCard(
+                          title: 'Medicine',
+                          subtitle: 'Jan Aushadhi Gen.',
+                          icon: Icons.medication_rounded,
+                          color: const Color(0xFFBE185D),
+                          featureKey: 'Medicine Safety',
+                        ),
+                        const SizedBox(width: 8),
+                        _buildHeroFeatureCard(
+                          title: 'Food Safety',
+                          subtitle: 'FSSAI & Expiry',
+                          icon: Icons.health_and_safety_rounded,
+                          color: const Color(0xFF0F766E),
+                          featureKey: 'Product Safety',
+                        ),
+                        const SizedBox(width: 8),
+                        _buildHeroFeatureCard(
+                          title: 'Live Translate',
+                          subtitle: 'Camera OCR & 12+',
+                          icon: Icons.translate_rounded,
+                          color: const Color(0xFF2563EB),
+                          featureKey: 'Translation',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 6),
             const Divider(height: 1),
 
             // Middle Section: Chat Conversations Stream
@@ -676,7 +1105,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
               child: ListView.builder(
                 controller: _scrollController,
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                 itemCount: widget.activeMessages.length,
                 itemBuilder: (context, index) {
                   final message = widget.activeMessages[index];
@@ -694,15 +1123,16 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
               duration: const Duration(milliseconds: 250),
               crossFadeState: widget.isTyping ? CrossFadeState.showFirst : CrossFadeState.showSecond,
               firstChild: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
                 child: Row(
                   children: [
                     Text(
-                      widget.typingStatus ?? 'Aura is processing',
+                      widget.typingStatus ?? 'NyayaSathi is analyzing',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: _getFeatureColor(_selectedFeature),
+                        color: theme.colorScheme.primary,
                         fontStyle: FontStyle.italic,
                         fontWeight: FontWeight.w600,
+                        fontSize: 13,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -711,7 +1141,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                       height: 14,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: _getFeatureColor(_selectedFeature),
+                        color: theme.colorScheme.primary,
                       ),
                     ),
                   ],
@@ -720,28 +1150,26 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
               secondChild: const SizedBox.shrink(),
             ),
 
-            // Prompt Chips for quick interaction
+            // 1-Tap Quick Sample Chips row
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
               child: Row(
                 children: [
-                  _buildPromptChip('Analyze document risk & scams', 'Document Analyzer'),
-                  const SizedBox(width: 8),
-                  _buildPromptChip('Translate this document', 'Translation'),
-                  const SizedBox(width: 8),
-                  _buildPromptChip('OCR Scan text & QR', 'Scanner'),
-                  const SizedBox(width: 8),
-                  _buildPromptChip('Verify & index document', 'Documents'),
-                  const SizedBox(width: 8),
-                  _buildPromptChip('Analyze bill (GST & charges)', 'Bill Analyzer'),
-                  const SizedBox(width: 8),
-                  _buildPromptChip('Verify food (FSSAI & Expiry)', 'Product Safety'),
-                  const SizedBox(width: 8),
-                  _buildPromptChip('Verify medicine (Jan Aushadhi & Expiry)', 'Medicine Safety'),
-                  const SizedBox(width: 8),
-                  _buildPromptChip('Upload file / photo', null, isUploadAction: true),
+                  _buildQuickSamplePill('📄 Rental Lease Sample', _runSampleRentalAgreement, const Color(0xFFDC2626)),
+                  const SizedBox(width: 6),
+                  _buildQuickSamplePill('🧾 Restaurant Bill Sample', _runSampleRestaurantBill, const Color(0xFF16A34A)),
+                  const SizedBox(width: 6),
+                  _buildQuickSamplePill('💊 Dolo 650 Generic Sample', _runSampleDolo650, const Color(0xFFBE185D)),
+                  const SizedBox(width: 6),
+                  _buildQuickSamplePill('🥤 Real Mango Sugar Sample', _runSampleHighSugarDrink, const Color(0xFF0F766E)),
+                  const SizedBox(width: 6),
+                  _buildPromptChip('Is restaurant service charge mandatory?'),
+                  const SizedBox(width: 6),
+                  _buildPromptChip('Can landlord forfeit my deposit?'),
+                  const SizedBox(width: 6),
+                  _buildPromptChip('How to file complaint on 1915?'),
                 ],
               ),
             ),
@@ -759,13 +1187,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                     color: theme.colorScheme.primary.withValues(alpha: 0.5),
                     width: 1.5,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
                 ),
                 child: Row(
                   children: [
@@ -796,7 +1217,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${_pendingAttachment!['size']} • Tap Translation, Scanner, or Documents above',
+                            '${_pendingAttachment!['size']} • Tap a safety tool above or press send',
                             style: TextStyle(
                               fontSize: 11,
                               color: theme.colorScheme.primary,
@@ -822,31 +1243,31 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
 
             // Bottom Input Bar
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
               child: Container(
-                height: 56,
+                height: 54,
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF22062C) : Colors.white,
                   borderRadius: BorderRadius.circular(28.0),
                   border: Border.all(
                     color: _pendingAttachment != null
                         ? theme.colorScheme.primary.withValues(alpha: 0.5)
-                        : (isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF)),
+                        : (isDark ? const Color(0xFF32113D) : const Color(0xFFE2E8F0)),
                     width: _pendingAttachment != null ? 1.5 : 1.0,
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 10,
-                      offset: const Offset(0, 4),
+                      offset: const Offset(0, 3),
                     ),
                   ],
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
                   child: Row(
                     children: [
-                      // Upload Attachment Button with smooth animation
+                      // Upload Attachment Button
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
@@ -859,18 +1280,18 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                             decoration: BoxDecoration(
                               color: _pendingAttachment != null
                                   ? theme.colorScheme.primary
-                                  : theme.colorScheme.primaryContainer,
+                                  : theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
-                              _pendingAttachment != null ? Icons.attach_file : Icons.add,
+                              _pendingAttachment != null ? Icons.attach_file : Icons.add_rounded,
                               color: _pendingAttachment != null ? Colors.white : theme.colorScheme.primary,
                               size: 22,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: TextField(
                           controller: _messageController,
@@ -878,15 +1299,15 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                           onSubmitted: (_) => _sendMessage(),
                           decoration: InputDecoration(
                             hintText: _pendingAttachment != null
-                                ? 'Add instructions or tap a feature above...'
-                                : 'Ask Aura or tap + to upload photo / doc...',
+                                ? 'Add notes or tap an analyzer above…'
+                                : 'Ask legal/safety questions or tap + to scan…',
                             hintStyle: TextStyle(
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                              fontSize: 13.5,
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
+                              fontSize: 13.0,
                             ),
                             border: InputBorder.none,
                           ),
-                          style: theme.textTheme.bodyLarge,
+                          style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13.5),
                         ),
                       ),
                       Material(
@@ -894,18 +1315,17 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                         child: InkWell(
                           onTap: _sendMessage,
                           borderRadius: BorderRadius.circular(20),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            width: 40,
-                            height: 40,
+                          child: Container(
+                            width: 38,
+                            height: 38,
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primary,
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
-                              Icons.send,
+                              Icons.send_rounded,
                               color: Colors.white,
-                              size: 18,
+                              size: 17,
                             ),
                           ),
                         ),
@@ -921,110 +1341,67 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     );
   }
 
-  // Smooth Highlighted Feature Button Widget
-  Widget _buildSmoothFeatureButton({
-    required String label,
+  // ─── Hero Feature Card ───────────────────────────────────────────────────
+  Widget _buildHeroFeatureCard({
+    required String title,
+    required String subtitle,
     required IconData icon,
+    required Color color,
     required String featureKey,
-    required Color accentColor,
   }) {
-    final isSelected = _selectedFeature == featureKey;
-    final hasAttachment = _pendingAttachment != null;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return GestureDetector(
+    return InkWell(
       onTap: () => _onFeatureButtonTapped(featureKey),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 124,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
         decoration: BoxDecoration(
-          color: isSelected
-              ? (isDark ? accentColor.withValues(alpha: 0.28) : accentColor.withValues(alpha: 0.14))
-              : (hasAttachment
-                  ? (isDark ? accentColor.withValues(alpha: 0.12) : accentColor.withValues(alpha: 0.06))
-                  : (isDark ? const Color(0xFF22062C) : Colors.white)),
-          borderRadius: BorderRadius.circular(16.0),
-          border: Border.all(
-            color: isSelected
-                ? accentColor
-                : (hasAttachment
-                    ? accentColor.withValues(alpha: 0.5)
-                    : (isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF))),
-            width: isSelected ? 2.0 : (hasAttachment ? 1.5 : 1.0),
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: accentColor.withValues(alpha: 0.28),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : (hasAttachment
-                  ? [
-                      BoxShadow(
-                        color: accentColor.withValues(alpha: 0.15),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]),
+          color: isDark ? color.withValues(alpha: 0.12) : color.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.28)),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  padding: const EdgeInsets.all(8.0),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? accentColor
-                        : accentColor.withValues(alpha: hasAttachment ? 0.18 : 0.10),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    icon,
-                    color: isSelected ? Colors.white : accentColor,
-                    size: 18,
-                  ),
-                ),
-                if (isSelected)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontWeight: isSelected ? FontWeight.bold : (hasAttachment ? FontWeight.bold : FontWeight.w600),
-                fontSize: 12,
-                color: isSelected
-                    ? (isDark ? Colors.white : accentColor)
-                    : (hasAttachment ? accentColor : theme.colorScheme.onSurface),
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
               ),
-              textAlign: TextAlign.center,
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+                color: isDark ? Colors.white : color,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ],
@@ -1033,7 +1410,66 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     );
   }
 
-  // Routing Message Bubbles
+  // ─── Quick Sample Pill ───────────────────────────────────────────────────
+  Widget _buildQuickSamplePill(String label, VoidCallback onTap, Color color) {
+    return InkWell(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.play_circle_filled_rounded, color: color, size: 14),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPromptChip(String prompt) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return ActionChip(
+      label: Text(
+        prompt,
+        style: TextStyle(
+          color: theme.colorScheme.primary,
+          fontWeight: FontWeight.w600,
+          fontSize: 11.5,
+        ),
+      ),
+      onPressed: () {
+        widget.onSendMessage(prompt);
+      },
+      backgroundColor: isDark ? const Color(0xFF2A0B35) : const Color(0xFFE5EEFF),
+      side: BorderSide.none,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    );
+  }
+
+  // ─── Message Routers ─────────────────────────────────────────────────────
   Widget _buildMessageRouter(Map<String, dynamic> message) {
     final type = message['type'] ?? 'text';
     final isUser = message['isUser'] == true;
@@ -1051,6 +1487,8 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
           return _buildScannerResultCard(message);
         case 'document_result':
           return _buildDocumentResultCard(message);
+        case 'bill_analysis_result':
+          return _buildBillAnalysisResultCard(message);
         case 'text':
         default:
           return _buildAiTextBubble(message['text'] ?? '');
@@ -1063,8 +1501,8 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12.0, left: 40.0),
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        margin: const EdgeInsets.only(bottom: 10.0, left: 48.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 11.0),
         decoration: BoxDecoration(
           color: theme.colorScheme.primary,
           borderRadius: const BorderRadius.only(
@@ -1072,19 +1510,12 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
             topRight: Radius.circular(16.0),
             bottomLeft: Radius.circular(16.0),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: theme.colorScheme.primary.withOpacity(0.25),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
-            ),
-          ],
         ),
         child: Text(
           text,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 14.5,
+            fontSize: 14.0,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -1100,26 +1531,15 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12.0, left: 32.0),
-        padding: const EdgeInsets.all(14.0),
+        margin: const EdgeInsets.only(bottom: 10.0, left: 40.0),
+        padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [accentColor, accentColor.withOpacity(0.85)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: accentColor,
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(18.0),
-            topRight: Radius.circular(18.0),
-            bottomLeft: Radius.circular(18.0),
+            topLeft: Radius.circular(16.0),
+            topRight: Radius.circular(16.0),
+            bottomLeft: Radius.circular(16.0),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: accentColor.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1128,12 +1548,12 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(10),
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.attach_file, color: Colors.white, size: 18),
+                  child: const Icon(Icons.attach_file, color: Colors.white, size: 16),
                 ),
                 const SizedBox(width: 10),
                 Flexible(
@@ -1145,14 +1565,14 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                          fontSize: 13.5,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        '${doc['size'] ?? ''} • Triggered $feature',
+                        '${doc['size'] ?? ''} • $feature',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.85),
+                          color: Colors.white.withValues(alpha: 0.85),
                           fontSize: 11,
                         ),
                       ),
@@ -1163,10 +1583,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
             ),
             if (message['text'] != null &&
                 message['text'] != 'Apply $feature to ${doc['name']}') ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 message['text'],
-                style: const TextStyle(color: Colors.white, fontSize: 13),
+                style: const TextStyle(color: Colors.white, fontSize: 12.5),
               ),
             ],
           ],
@@ -1182,23 +1602,23 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12.0, right: 40.0),
+        margin: const EdgeInsets.only(bottom: 12.0, right: 36.0),
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF22062C) : const Color(0xFFF0F4FF),
+          color: isDark ? const Color(0xFF22062C) : const Color(0xFFF1F5F9),
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(16.0),
             topRight: Radius.circular(16.0),
             bottomRight: Radius.circular(16.0),
           ),
           border: Border.all(
-            color: isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF),
+            color: isDark ? const Color(0xFF32113D) : const Color(0xFFE2E8F0),
           ),
         ),
-        child: Text(
+        child: SelectableText(
           text,
           style: TextStyle(
-            fontSize: 14.5,
+            fontSize: 13.5,
             fontWeight: FontWeight.w400,
             color: theme.colorScheme.onSurface,
             height: 1.5,
@@ -1208,7 +1628,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     );
   }
 
-  // Translation Result Card rendered directly in the chat stream
   Widget _buildTranslationResultCard(Map<String, dynamic> msg) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -1217,526 +1636,121 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 14.0, right: 20.0),
+        margin: const EdgeInsets.only(bottom: 12.0, right: 20.0),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E0C2B) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isDark ? accent.withOpacity(0.4) : accent.withOpacity(0.3),
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withOpacity(0.08),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accent.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.1),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.translate, color: accent, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Translation: ${msg['documentName']}',
+                      style: const TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 12.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(msg['translatedText'] ?? '', style: const TextStyle(fontSize: 13, height: 1.4)),
+                ],
+              ),
             ),
           ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header stripe
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                color: accent.withOpacity(0.12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.translate, color: accent, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Translation: ${msg['documentName']}',
-                        style: const TextStyle(
-                          color: accent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: accent,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        msg['confidence'] ?? '99.8%',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Language Pair Indicator
-                    Row(
-                      children: [
-                        Text(
-                          msg['sourceLang'] ?? 'Source',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.arrow_forward, size: 14, color: accent),
-                        const SizedBox(width: 6),
-                        Text(
-                          msg['targetLang'] ?? 'Target',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: accent,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-
-                    // Original Snippet
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF2B123A) : const Color(0xFFF6F8FC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isDark ? const Color(0xFF3E1D52) : const Color(0xFFE2E8F0),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'ORIGINAL TEXT (EXCERPT)',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            msg['originalSnippet'] ?? '',
-                            style: TextStyle(
-                              fontStyle: FontStyle.italic,
-                              fontSize: 13,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Translated Result Box
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: accent.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: accent.withOpacity(0.25)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'TRANSLATED TEXT',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: accent,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            msg['translatedText'] ?? '',
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                              height: 1.4,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Action buttons: Copy & Quick Feature Switchers
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: msg['translatedText'] ?? ''));
-                            _showMinimalToast('Translation copied to clipboard', Icons.check, accent);
-                          },
-                          icon: const Icon(Icons.copy, size: 15, color: accent),
-                          label: const Text(
-                            'Copy Translation',
-                            style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            _buildQuickActionPill('Scanner', Icons.qr_code_scanner, () {
-                              _onFeatureButtonTapped('Scanner');
-                            }),
-                            const SizedBox(width: 6),
-                            _buildQuickActionPill('Track', Icons.description, () {
-                              _onFeatureButtonTapped('Documents');
-                            }),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
   }
 
-  // Scanner Result Card rendered directly in the chat stream
   Widget _buildScannerResultCard(Map<String, dynamic> msg) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     const accent = Color(0xFF9D00FF);
-    final fields = msg['extractedFields'] as List<dynamic>? ?? [];
 
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 14.0, right: 20.0),
+        margin: const EdgeInsets.only(bottom: 12.0, right: 20.0),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E0C2B) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isDark ? accent.withOpacity(0.4) : accent.withOpacity(0.3),
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withOpacity(0.08),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accent.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.1),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.qr_code_scanner, color: accent, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Scan Result: ${msg['documentName']}',
+                      style: const TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 12.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Text(msg['extractedText'] ?? msg['summary'] ?? '', style: const TextStyle(fontSize: 13, height: 1.4)),
             ),
           ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header stripe
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                color: accent.withOpacity(0.12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.qr_code_scanner, color: accent, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Scanner Result: ${msg['documentName']}',
-                        style: const TextStyle(
-                          color: accent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade600,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Text(
-                        'OCR Complete',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // QR / Code payload
-                    if (msg['detectedCode'] != null) ...[
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: accent.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: accent.withOpacity(0.2)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.qr_code, color: accent, size: 20),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                msg['detectedCode'],
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                  color: accent,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-
-                    // Extracted Fields Table
-                    const Text(
-                      'EXTRACTED DATA & FIELDS',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: accent,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    ...fields.map((f) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 140,
-                              child: Text(
-                                f['label'] ?? '',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                f['value'] ?? '',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.onSurface,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: msg['detectedCode'] ?? ''));
-                            _showMinimalToast('Scanned data copied!', Icons.check, accent);
-                          },
-                          icon: const Icon(Icons.copy, size: 15, color: accent),
-                          label: const Text(
-                            'Copy Data',
-                            style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            _buildQuickActionPill('Translate', Icons.translate, () {
-                              _onFeatureButtonTapped('Translation');
-                            }),
-                            const SizedBox(width: 6),
-                            _buildQuickActionPill('Verify', Icons.description, () {
-                              _onFeatureButtonTapped('Documents');
-                            }),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
   }
 
-  // Document Tracker Result Card rendered directly in the chat stream
   Widget _buildDocumentResultCard(Map<String, dynamic> msg) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     const accent = Color(0xFFFF4081);
 
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 14.0, right: 20.0),
+        margin: const EdgeInsets.only(bottom: 12.0, right: 20.0),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E0C2B) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isDark ? accent.withOpacity(0.4) : accent.withOpacity(0.3),
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withOpacity(0.08),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accent.withValues(alpha: 0.3)),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(14.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header stripe
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                color: accent.withOpacity(0.12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.description, color: accent, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Document Tracker: ${msg['documentName']}',
-                        style: const TextStyle(
-                          color: accent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade600,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        msg['status'] ?? 'Verified',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              Row(
+                children: [
+                  const Icon(Icons.verified_rounded, color: accent, size: 18),
+                  const SizedBox(width: 8),
+                  Text(msg['documentName'] ?? 'Document', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                ],
               ),
-
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Analysis summary
-                    Text(
-                      msg['summary'] ?? '',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        color: theme.colorScheme.onSurface,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // File Metadata Info Grid
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF2B123A) : const Color(0xFFF6F8FC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isDark ? const Color(0xFF3E1D52) : const Color(0xFFE2E8F0),
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          _buildDocMetaRow('File Type', msg['fileType'] ?? 'PDF Document'),
-                          const Divider(height: 12),
-                          _buildDocMetaRow('File Size', msg['fileSize'] ?? '1.2 MB'),
-                          const Divider(height: 12),
-                          _buildDocMetaRow('Indexed On', msg['indexedDate'] ?? 'Today'),
-                          const Divider(height: 12),
-                          _buildDocMetaRow('Repository Total', '${msg['totalDocs'] ?? 1} document(s) verified'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'SHA-256 Checksum Valid',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green.shade600,
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            _buildQuickActionPill('Translate', Icons.translate, () {
-                              _onFeatureButtonTapped('Translation');
-                            }),
-                            const SizedBox(width: 6),
-                            _buildQuickActionPill('Scan', Icons.qr_code_scanner, () {
-                              _onFeatureButtonTapped('Scanner');
-                            }),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              const SizedBox(height: 6),
+              Text(msg['summary'] ?? 'Indexed & verified.', style: const TextStyle(fontSize: 12.5)),
             ],
           ),
         ),
@@ -1744,94 +1758,34 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
     );
   }
 
-  Widget _buildDocMetaRow(String label, String val) {
-    final theme = Theme.of(context);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            color: theme.colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        Text(
-          val,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.onSurface,
-          ),
-        ),
-      ],
-    );
-  }
+  Widget _buildBillAnalysisResultCard(Map<String, dynamic> msg) {
+    final result = msg['billResult'] as BillAnalysisResult?;
+    if (result == null) return const SizedBox.shrink();
 
-  Widget _buildQuickActionPill(String label, IconData icon, VoidCallback onTap) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+    return Align(
+      alignment: Alignment.centerLeft,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 12, color: theme.colorScheme.primary),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
+        margin: const EdgeInsets.only(bottom: 14.0, right: 16.0),
+        child: BillAnalysisInlineCard(
+          result: result,
+          onViewFullReport: () {
+            final histService = widget.historyService ?? ScanHistoryService();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BillAnalysisScreen(
+                  result: result,
+                  imagePath: msg['imagePath'] as String?,
+                  historyService: histService,
+                ),
               ),
-            ),
-          ],
+            );
+          },
+          onFollowUp: (question) {
+            widget.onSendMessage(question);
+          },
         ),
-      ),
-    );
-  }
-
-  Widget _buildPromptChip(String prompt, String? feature, {bool isUploadAction = false}) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return ActionChip(
-      avatar: isUploadAction ? const Icon(Icons.add, size: 16) : null,
-      label: Text(
-        prompt,
-        style: TextStyle(
-          color: theme.colorScheme.primary,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
-      ),
-      onPressed: () {
-        if (isUploadAction) {
-          _showUploadBottomSheet();
-        } else {
-          if (feature != null) {
-            _onFeatureButtonTapped(feature);
-          } else {
-            widget.onSendMessage(prompt);
-          }
-        }
-      },
-      backgroundColor: isDark ? const Color(0xFF2A0B35) : const Color(0xFFE5EEFF),
-      side: BorderSide.none,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
       ),
     );
   }
 }
-
