@@ -5,8 +5,13 @@ import 'history_screen.dart';
 import 'updates_screen.dart';
 import 'settings_screen.dart';
 import 'scanner/ocr_screen.dart';
+import 'scanner/scanner_hub_screen.dart';
+import 'bill_analyzer/bill_analyzer_entry_screen.dart';
+import 'legal_analyzer/legal_analyzer_entry_screen.dart';
 import '../services/ocr_service.dart';
 import '../services/scan_history_service.dart';
+
+import '../widgets/translation_mode_sheet.dart';
 
 class MainNavigation extends StatefulWidget {
   final bool isLightMode;
@@ -215,46 +220,69 @@ class MainNavigationState extends State<MainNavigation> {
       });
     }
 
-    if (feature == 'Scanner' && docPath != null) {
-      // Route to real OCR screen
+    if (feature == 'Scanner') {
+      // Route to Universal Scanner Hub (QR/Barcode, Product & Safety Scanner)
       final context = this.context;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => OcrScreen(
-            historyService: _scanHistoryService,
+          builder: (_) => ScannerHubScreen(
             ocrService: _ocrService,
-            initialImagePath: docPath,
+            historyService: _scanHistoryService,
+            initialTab: 0,
           ),
         ),
       ).then((result) {
-        // After returning, add a chat card
         if (mounted) {
           setState(() {
             activeMessages.add({
               'isUser': false,
               'type': 'ocr_launched',
               'documentName': docName,
-              'message': 'OCR scan completed for $docName. Results saved to Scan History.',
+              'message': 'Universal scan completed. Results saved to Scan History.',
             });
           });
-          _saveSessionToHistory('Scanner: $docName', 'OCR scan completed for $docName');
+          _saveSessionToHistory('Scanner: $docName', 'Scan completed');
         }
       });
       return;
     }
 
-    if (feature == 'Translation' && docPath != null) {
-      // Route to OCR → auto-translate flow
+    if (feature == 'Translation') {
+      // Open 2-Option Translation Selector (Text Translation vs. Image Translation)
+      final context = this.context;
+      TranslationModeSheet.show(
+        context,
+        ocrService: _ocrService,
+        historyService: _scanHistoryService,
+        initialImagePath: docPath,
+        documentName: docName,
+      ).then((_) {
+        if (mounted && docName.isNotEmpty) {
+          setState(() {
+            activeMessages.add({
+              'isUser': false,
+              'type': 'translation_launched',
+              'documentName': docName,
+              'message': 'Translation session for "$docName" completed.',
+            });
+          });
+          _saveSessionToHistory('Translation: $docName', 'Dual-mode translation completed');
+        }
+      });
+      return;
+    }
+
+    if (feature == 'Bill Analyzer') {
+      // Open Bill Analyzer entry screen directly
       final context = this.context;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => OcrScreen(
-            historyService: _scanHistoryService,
+          builder: (_) => BillAnalyzerEntryScreen(
             ocrService: _ocrService,
-            initialImagePath: docPath,
-            autoTranslate: true,
+            historyService: _scanHistoryService,
+            existingOcrResult: null,
           ),
         ),
       ).then((_) {
@@ -262,12 +290,68 @@ class MainNavigationState extends State<MainNavigation> {
           setState(() {
             activeMessages.add({
               'isUser': false,
-              'type': 'translation_launched',
-              'documentName': docName,
-              'message': 'OCR + Translation completed for $docName. Results saved to Scan History.',
+              'type': 'text',
+              'text': 'Bill analysis complete. Check the results for GST verification and charge details.',
             });
           });
-          _saveSessionToHistory('Translation: $docName', 'OCR + translation completed for $docName');
+        }
+      });
+      return;
+    }
+
+    if (feature == 'Document Analyzer' ||
+        feature == 'Legal Analyzer' ||
+        feature == 'Legal Risk') {
+      // Open Document Risk & Scam Analyzer entry screen directly
+      final context = this.context;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LegalAnalyzerEntryScreen(
+            ocrService: _ocrService,
+            historyService: _scanHistoryService,
+          ),
+        ),
+      ).then((_) {
+        if (mounted) {
+          setState(() {
+            activeMessages.add({
+              'isUser': false,
+              'type': 'text',
+              'text': 'Document risk & scam analysis complete. Check the verified report for highlighted risks and statutory protections.',
+            });
+          });
+        }
+      });
+      return;
+    }
+
+    if (feature == 'Product Safety' ||
+        feature == 'Food Safety' ||
+        feature == 'Product' ||
+        feature == 'Medicine' ||
+        feature == 'Medicine Safety' ||
+        feature == 'Pharma') {
+      // Open Universal Product & Safety Scanner tab directly
+      final context = this.context;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ScannerHubScreen(
+            ocrService: _ocrService,
+            historyService: _scanHistoryService,
+            initialTab: 1,
+          ),
+        ),
+      ).then((_) {
+        if (mounted) {
+          setState(() {
+            activeMessages.add({
+              'isUser': false,
+              'type': 'text',
+              'text': 'Universal Product & Safety audit complete.',
+            });
+          });
         }
       });
       return;

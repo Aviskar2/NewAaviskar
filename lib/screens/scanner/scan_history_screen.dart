@@ -24,7 +24,7 @@ class _ScanHistoryScreenState extends State<ScanHistoryScreen>
   late final TabController _tabController;
   bool _loading = true;
 
-  static const _tabs = ['All', 'OCR', 'QR Code', 'Barcode', 'Translation'];
+  static const _tabs = ['All', 'OCR', 'QR Code', 'Barcode', 'Translation', 'Bill Analysis'];
 
   @override
   void initState() {
@@ -55,6 +55,8 @@ class _ScanHistoryScreenState extends State<ScanHistoryScreen>
         return items.where((i) => i.type == ScanType.barcode).toList();
       case 4:
         return items.where((i) => i.type == ScanType.translation).toList();
+      case 5:
+        return items.where((i) => i.type == ScanType.billAnalysis).toList();
       default:
         return items;
     }
@@ -126,6 +128,15 @@ class _ScanHistoryScreenState extends State<ScanHistoryScreen>
             ),
           );
         }
+        break;
+      case ScanType.billAnalysis:
+        // Show a summary snackbar for bill analysis history
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(item.summary),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
         break;
       case ScanType.qrCode:
       case ScanType.barcode:
@@ -297,6 +308,8 @@ class _HistoryTile extends StatelessWidget {
         return const Color(0xFF2563EB);
       case ScanType.translation:
         return const Color(0xFFFF6E84);
+      case ScanType.billAnalysis:
+        return const Color(0xFF16A34A);
     }
   }
 
@@ -310,6 +323,8 @@ class _HistoryTile extends StatelessWidget {
         return Icons.barcode_reader;
       case ScanType.translation:
         return Icons.translate_rounded;
+      case ScanType.billAnalysis:
+        return Icons.receipt_long_rounded;
     }
   }
 

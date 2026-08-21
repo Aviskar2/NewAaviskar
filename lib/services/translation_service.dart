@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_translation/google_mlkit_translation.dart';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 
 /// Supported app language definition
 class AppLanguage {
@@ -376,7 +377,88 @@ class TranslationService {
       debugPrint('MyMemory API error: $e');
     }
 
+    // 3. OpenRouter Free LLM Fallback
+    try {
+      if (ApiConfig.openRouterApiKey.isNotEmpty &&
+          !ApiConfig.openRouterApiKey.contains('<YOUR_')) {
+        final uri = Uri.parse('${ApiConfig.openRouterBaseUrl}/chat/completions');
+        final response = await http.post(
+          uri,
+          headers: {
+            'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
+            'HTTP-Referer': ApiConfig.appSiteUrl,
+            'X-Title': ApiConfig.appName,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'model': 'google/gemini-2.0-flash-exp:free',
+            'temperature': 0.1,
+            'messages': [
+              {
+                'role': 'system',
+                'content':
+                    'Translate the following text accurately into the language code "$toCode". Return ONLY the translated string with no explanations or notes.',
+              },
+              {'role': 'user', 'content': text},
+            ],
+          }),
+        ).timeout(const Duration(seconds: 8));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final translated = decoded['choices']?[0]?['message']?['content']?.toString().trim();
+          if (translated != null && translated.isNotEmpty) {
+            return translated;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('OpenRouter translation error: $e');
+    }
+
     return null;
+  }
+
+  /// Fast parallel translation of a list of text blocks.
+  Future<Map<int, String>> translateBatch(
+    List<String> texts, {
+    required AppLanguage from,
+    required AppLanguage to,
+  }) async {
+    final results = <int, String>{};
+    final futures = <Future<void>>[];
+
+    for (int i = 0; i < texts.length; i++) {
+      final text = texts[i].trim();
+      if (text.isEmpty) continue;
+      final index = i;
+
+      futures.add(() async {
+        try {
+          // Try fast online first for instant response
+          final online = await translateOnline(
+            text,
+            fromCode: from.onlineCode,
+            toCode: to.onlineCode,
+          );
+          if (online != null && online.trim().isNotEmpty) {
+            results[index] = online.trim();
+            return;
+          }
+
+          // Fallback to single translate stream
+          await for (final progress in translate(text, from: from, to: to)) {
+            if (progress.status == TranslationStatus.done && progress.result != null) {
+              results[index] = progress.result!;
+              break;
+            }
+          }
+        } catch (_) {}
+      }());
+    }
+
+    await Future.wait(futures);
+    return results;
   }
 
   void _triggerBackgroundDownload(String bcpCode) {

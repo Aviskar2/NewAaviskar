@@ -5,7 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import '../services/ocr_service.dart';
 import '../services/scan_history_service.dart';
 import 'scanner/qr_scanner_screen.dart';
-import 'scanner/ocr_screen.dart';
 
 class HomeDashboardScreen extends StatefulWidget {
   final List<Map<String, dynamic>> activeMessages;
@@ -78,6 +77,26 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
   void _onFeatureButtonTapped(String feature) {
     HapticFeedback.lightImpact();
 
+    // Bill Analyzer, Document Analyzer, Legal Analyzer, Product Safety, Medicine Safety, Translation, and Scanner can launch directly
+    if (feature == 'Bill Analyzer' ||
+        feature == 'Document Analyzer' ||
+        feature == 'Legal Analyzer' ||
+        feature == 'Legal Risk' ||
+        feature == 'Product Safety' ||
+        feature == 'Food Safety' ||
+        feature == 'Medicine' ||
+        feature == 'Medicine Safety' ||
+        feature == 'Pharma' ||
+        feature == 'Translation' ||
+        feature == 'Scanner') {
+      widget.onExecuteFeature(
+        feature: feature,
+        document: {},
+        userPrompt: null,
+      );
+      return;
+    }
+
     // If no document is attached yet:
     if (_pendingAttachment == null) {
       _showMinimalToast(
@@ -107,6 +126,19 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
         return const Color(0xFF9D00FF); // Vibrant Purple
       case 'Documents':
         return const Color(0xFFFF4081); // Bright Pink/Coral
+      case 'Bill Analyzer':
+        return const Color(0xFF16A34A); // Emerald Green
+      case 'Document Analyzer':
+      case 'Legal Analyzer':
+      case 'Legal Risk':
+        return const Color(0xFFDC2626); // Crimson Red
+      case 'Product Safety':
+      case 'Food Safety':
+        return const Color(0xFF0F766E); // Teal / Food Green
+      case 'Medicine':
+      case 'Medicine Safety':
+      case 'Pharma':
+        return const Color(0xFF991B1B); // Crimson / Medicine Red
       default:
         return const Color(0xFF2563EB);
     }
@@ -120,6 +152,20 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
         return Icons.qr_code_scanner;
       case 'Documents':
         return Icons.description;
+      case 'Bill Analyzer':
+        return Icons.receipt_long_rounded;
+      case 'Document Analyzer':
+        return Icons.document_scanner_rounded;
+      case 'Legal Analyzer':
+      case 'Legal Risk':
+        return Icons.gavel_rounded;
+      case 'Product Safety':
+      case 'Food Safety':
+        return Icons.health_and_safety_rounded;
+      case 'Medicine':
+      case 'Medicine Safety':
+      case 'Pharma':
+        return Icons.medication_rounded;
       default:
         return Icons.auto_awesome;
     }
@@ -560,36 +606,63 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
                   ),
                   const SizedBox(height: 10),
 
-                  // 3 Smooth Highlightable Feature Buttons
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildSmoothFeatureButton(
-                          label: 'Translation',
-                          icon: Icons.translate,
-                          featureKey: 'Translation',
-                          accentColor: const Color(0xFF2563EB),
+                  // Smooth Highlightable Feature Buttons (Horizontal Scroll)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 145,
+                          child: _buildSmoothFeatureButton(
+                            label: 'Document Analyzer',
+                            icon: Icons.document_scanner_rounded,
+                            featureKey: 'Document Analyzer',
+                            accentColor: const Color(0xFFDC2626),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildSmoothFeatureButton(
-                          label: 'Scanner',
-                          icon: Icons.qr_code_scanner,
-                          featureKey: 'Scanner',
-                          accentColor: const Color(0xFF9D00FF),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 105,
+                          child: _buildSmoothFeatureButton(
+                            label: 'Bill',
+                            icon: Icons.receipt_long_rounded,
+                            featureKey: 'Bill Analyzer',
+                            accentColor: const Color(0xFF16A34A),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildSmoothFeatureButton(
-                          label: 'Documents',
-                          icon: Icons.description,
-                          featureKey: 'Documents',
-                          accentColor: const Color(0xFFFF4081),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 105,
+                          child: _buildSmoothFeatureButton(
+                            label: 'Translation',
+                            icon: Icons.translate,
+                            featureKey: 'Translation',
+                            accentColor: const Color(0xFF2563EB),
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 100,
+                          child: _buildSmoothFeatureButton(
+                            label: 'Scanner',
+                            icon: Icons.qr_code_scanner,
+                            featureKey: 'Scanner',
+                            accentColor: const Color(0xFF9D00FF),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 105,
+                          child: _buildSmoothFeatureButton(
+                            label: 'Documents',
+                            icon: Icons.description,
+                            featureKey: 'Documents',
+                            accentColor: const Color(0xFFFF4081),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -654,11 +727,19 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen>
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
               child: Row(
                 children: [
+                  _buildPromptChip('Analyze document risk & scams', 'Document Analyzer'),
+                  const SizedBox(width: 8),
                   _buildPromptChip('Translate this document', 'Translation'),
                   const SizedBox(width: 8),
                   _buildPromptChip('OCR Scan text & QR', 'Scanner'),
                   const SizedBox(width: 8),
                   _buildPromptChip('Verify & index document', 'Documents'),
+                  const SizedBox(width: 8),
+                  _buildPromptChip('Analyze bill (GST & charges)', 'Bill Analyzer'),
+                  const SizedBox(width: 8),
+                  _buildPromptChip('Verify food (FSSAI & Expiry)', 'Product Safety'),
+                  const SizedBox(width: 8),
+                  _buildPromptChip('Verify medicine (Jan Aushadhi & Expiry)', 'Medicine Safety'),
                   const SizedBox(width: 8),
                   _buildPromptChip('Upload file / photo', null, isUploadAction: true),
                 ],

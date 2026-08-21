@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/scan_result_model.dart';
 import '../../services/scan_history_service.dart';
+import '../../services/ocr_service.dart';
+import '../bill_analyzer/bill_analyzer_entry_screen.dart';
+import 'universal_product_entry_screen.dart';
+import 'image_overlay_translation_screen.dart';
 import 'translation_screen.dart';
 
 /// Full-screen OCR result view.
@@ -17,12 +21,14 @@ class OcrResultScreen extends StatefulWidget {
   final OcrResult result;
   final ScanHistoryService historyService;
   final bool autoTranslate;
+  final OcrService? ocrService;
 
   const OcrResultScreen({
     Key? key,
     required this.result,
     required this.historyService,
     this.autoTranslate = false,
+    this.ocrService,
   }) : super(key: key);
 
   @override
@@ -65,6 +71,62 @@ class _OcrResultScreenState extends State<OcrResultScreen> {
       MaterialPageRoute(
         builder: (_) => TranslationScreen(
           initialText: _textController.text,
+          historyService: widget.historyService,
+        ),
+      ),
+    );
+  }
+
+  void _openImageTranslation() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImageOverlayTranslationScreen(
+          ocrResult: widget.result,
+        ),
+      ),
+    );
+  }
+
+  void _openBillAnalyzer() {
+    final ocrService = widget.ocrService;
+    if (ocrService == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bill Analyzer not available'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BillAnalyzerEntryScreen(
+          ocrService: ocrService,
+          historyService: widget.historyService,
+          existingOcrResult: widget.result,
+        ),
+      ),
+    );
+  }
+
+  void _openUniversalProductSafety() {
+    final ocrService = widget.ocrService;
+    if (ocrService == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Product Safety not available'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UniversalProductEntryScreen(
+          ocrService: ocrService,
           historyService: widget.historyService,
         ),
       ),
@@ -120,23 +182,95 @@ class _OcrResultScreenState extends State<OcrResultScreen> {
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _openTranslation,
-                    icon: const Icon(Icons.translate_rounded),
-                    label: const Text('Translate This Text'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      textStyle: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        fontFamily: 'Inter',
-                      ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Analyze Bill and Universal Product & Safety action buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _openBillAnalyzer,
+                            icon: const Icon(Icons.receipt_long_rounded, size: 16),
+                            label: const Text('Audit Bill'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF16A34A),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              textStyle: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _openUniversalProductSafety,
+                            icon: const Icon(Icons.verified_user_rounded, size: 16),
+                            label: const Text('Product & Safety'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF0F766E),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              textStyle: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _openTranslation,
+                            icon: const Icon(Icons.translate_rounded, size: 18),
+                            label: const Text('Translate Text'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              textStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _openImageTranslation,
+                            icon: const Icon(Icons.photo_filter_rounded, size: 18),
+                            label: const Text('Image Translation'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF9D00FF),
+                              side: const BorderSide(
+                                  color: Color(0xFF9D00FF), width: 1.5),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              textStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),

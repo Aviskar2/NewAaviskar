@@ -1,0 +1,1232 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../models/analysis_result.dart';
+import '../../models/bill_model.dart';
+import '../../services/scan_history_service.dart';
+import '../../utils/url_launcher_util.dart';
+import '../../widgets/bill_analysis/finding_card.dart';
+
+/// Main bill analysis result dashboard — the full professional report.
+class BillAnalysisScreen extends StatefulWidget {
+  final BillAnalysisResult result;
+  final String? imagePath;
+  final ScanHistoryService historyService;
+
+  const BillAnalysisScreen({
+    Key? key,
+    required this.result,
+    this.imagePath,
+    required this.historyService,
+  }) : super(key: key);
+
+  @override
+  State<BillAnalysisScreen> createState() => _BillAnalysisScreenState();
+}
+
+class _BillAnalysisScreenState extends State<BillAnalysisScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  final Set<String> _expandedFindings = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 7, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Color _overallColor() {
+    switch (widget.result.overallResult) {
+      case OverallResult.looksCorrect: return const Color(0xFF16A34A);
+      case OverallResult.needsVerification: return const Color(0xFFD97706);
+      case OverallResult.suspiciousCharges: return const Color(0xFFDC2626);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final r = widget.result;
+    final color = _overallColor();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Bill Analysis'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share_outlined),
+            tooltip: 'Share report',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: _buildTextReport(r)));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Report copied to clipboard'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: const [
+            Tab(text: 'Summary'),
+            Tab(text: '✅ OK'),
+            Tab(text: '⚠️ Verify'),
+            Tab(text: '🚨 Issues'),
+            Tab(text: '🔍 Patterns'),
+            Tab(text: '🏢 GSTIN'),
+            Tab(text: '📜 Sources'),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          // Overall verdict banner
+          _OverallBanner(result: r, color: color, isDark: isDark, theme: theme),
+
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _SummaryTab(result: r, isDark: isDark, theme: theme, imagePath: widget.imagePath),
+                _FindingsTab(
+                  findings: r.okFindings,
+                  emptyLabel: 'No issues flagged as correct yet',
+                  expandedIds: _expandedFindings,
+                  onToggle: (id) => setState(() {
+                    if (_expandedFindings.contains(id)) {
+                      _expandedFindings.remove(id);
+                    } else {
+                      _expandedFindings.add(id);
+                    }
+                  }),
+                ),
+                _FindingsTab(
+                  findings: r.verifyFindings,
+                  emptyLabel: 'No items need verification ✅',
+                  expandedIds: _expandedFindings,
+                  onToggle: (id) => setState(() {
+                    if (_expandedFindings.contains(id)) {
+                      _expandedFindings.remove(id);
+                    } else {
+                      _expandedFindings.add(id);
+                    }
+                  }),
+                ),
+                _FindingsTab(
+                  findings: [...r.errorFindings, ...r.suspiciousFindings],
+                  emptyLabel: 'No suspicious charges found ✅',
+                  expandedIds: _expandedFindings,
+                  onToggle: (id) => setState(() {
+                    if (_expandedFindings.contains(id)) {
+                      _expandedFindings.remove(id);
+                    } else {
+                      _expandedFindings.add(id);
+                    }
+                  }),
+                ),
+                _PatternTab(result: r, isDark: isDark, theme: theme),
+                _GstinTab(
+                    verification: r.gstinVerification,
+                    isDark: isDark,
+                    theme: theme),
+                _SourcesTab(sources: r.sources, isDark: isDark, theme: theme),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _buildTextReport(BillAnalysisResult r) {
+    final buf = StringBuffer();
+    buf.writeln('=== BILL ANALYSIS REPORT ===');
+    buf.writeln('Overall: ${r.overallEmoji} ${r.overallLabel}');
+    buf.writeln('Bill Type: ${r.bill.billType.displayName}');
+    if (r.bill.sellerName != null) buf.writeln('Seller: ${r.bill.sellerName}');
+    if (r.bill.gstin != null) buf.writeln('GSTIN: ${r.bill.gstin}');
+    if (r.printedTotal != null) buf.writeln('Printed Total: ₹${r.printedTotal!.toStringAsFixed(2)}');
+    if (r.computedTotal != null) buf.writeln('Calculated Total: ₹${r.computedTotal!.toStringAsFixed(2)}');
+    buf.writeln('\n--- FINDINGS ---');
+    for (final f in r.findings) {
+      buf.writeln('${f.severity.emoji} [${f.category}] ${f.title}');
+      buf.writeln('   ${f.explanation}');
+    }
+    buf.writeln('\nAnalyzed: ${r.analyzedAt}');
+    return buf.toString();
+  }
+}
+
+// ─── Overall Banner ───────────────────────────────────────────────────────────
+
+class _OverallBanner extends StatelessWidget {
+  final BillAnalysisResult result;
+  final Color color;
+  final bool isDark;
+  final ThemeData theme;
+
+  const _OverallBanner({
+    required this.result,
+    required this.color,
+    required this.isDark,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.15 : 0.08),
+        border: Border(
+          bottom: BorderSide(color: color.withValues(alpha: 0.3)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(result.overallEmoji, style: const TextStyle(fontSize: 32)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  result.overallLabel,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${result.bill.billType.emoji} ${result.bill.billType.displayName}'
+                  '${result.bill.sellerName != null ? " · ${result.bill.sellerName}" : ""}',
+                  style: theme.textTheme.bodyMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (result.bill.isAiEnhanced) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF9D00FF).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '🤖 AI AUDITED',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF9D00FF),
+                    ),
+                  ),
+                ),
+              ],
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: result.isOnlineVerified
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  result.isOnlineVerified ? '🟢 LIVE' : '🟡 CACHED',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: result.isOnlineVerified ? Colors.green : Colors.orange,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${result.findings.length} findings',
+                style: theme.textTheme.labelMedium,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Pattern Analysis Tab ──────────────────────────────────────────────────
+
+class _PatternTab extends StatelessWidget {
+  final BillAnalysisResult result;
+  final bool isDark;
+  final ThemeData theme;
+
+  const _PatternTab({
+    required this.result,
+    required this.isDark,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Filter findings for Pattern, ML, and History categories
+    final patternFindings = result.findings
+        .where((f) => f.category == 'Pattern' || f.category == 'ML' || f.category == 'History')
+        .toList();
+
+    if (patternFindings.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.analytics_outlined,
+                size: 64,
+                color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+            const SizedBox(height: 16),
+            Text(
+              'No pattern anomalies detected',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Round amounts, threshold abuse, vendor risk,\nand statistical anomalies were checked.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Group by category
+    final grouped = <String, List<AnalysisFinding>>{};
+    for (final f in patternFindings) {
+      grouped.putIfAbsent(f.category, () => []).add(f);
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Anomaly score summary
+        _AnomalyScoreCard(findings: patternFindings, isDark: isDark, theme: theme),
+        const SizedBox(height: 16),
+
+        // Grouped findings
+        for (final entry in grouped.entries) ...[
+          _SectionHeader(title: entry.key),
+          const SizedBox(height: 8),
+          for (final finding in entry.value)
+            _PatternFindingCard(finding: finding, isDark: isDark, theme: theme),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+}
+
+class _AnomalyScoreCard extends StatelessWidget {
+  final List<AnalysisFinding> findings;
+  final bool isDark;
+  final ThemeData theme;
+
+  const _AnomalyScoreCard({
+    required this.findings,
+    required this.isDark,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final suspiciousCount = findings
+        .where((f) => f.severity == FindingSeverity.suspicious)
+        .length;
+    final verifyCount = findings
+        .where((f) => f.severity == FindingSeverity.verify)
+        .length;
+    final total = findings.length;
+
+    final score = total > 0 ? ((suspiciousCount * 2 + verifyCount) / (total * 2) * 100).clamp(0, 100) : 0;
+    final scoreColor = score > 60
+        ? const Color(0xFFDC2626)
+        : score > 30
+            ? const Color(0xFFD97706)
+            : const Color(0xFF16A34A);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scoreColor.withValues(alpha: isDark ? 0.15 : 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scoreColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            'Pattern Anomaly Score',
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${score.toStringAsFixed(0)}%',
+            style: TextStyle(
+              fontSize: 36,
+              fontWeight: FontWeight.w800,
+              color: scoreColor,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$suspiciousCount suspicious · $verifyCount needs review',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PatternFindingCard extends StatelessWidget {
+  final AnalysisFinding finding;
+  final bool isDark;
+  final ThemeData theme;
+
+  const _PatternFindingCard({
+    required this.finding,
+    required this.isDark,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = finding.severity == FindingSeverity.suspicious
+        ? const Color(0xFFDC2626)
+        : finding.severity == FindingSeverity.verify
+            ? const Color(0xFFD97706)
+            : const Color(0xFF16A34A);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(finding.severity.emoji, style: const TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  finding.title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  finding.category,
+                  style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            finding.explanation,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+            ),
+          ),
+          if (finding.recommendation != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  const Text('💡 ', style: TextStyle(fontSize: 12)),
+                  Expanded(
+                    child: Text(
+                      finding.recommendation!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onPrimaryContainer,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title.toUpperCase(),
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 1.2,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
+  }
+}
+
+// ─── Summary Tab ──────────────────────────────────────────────────────────────
+
+class _SummaryTab extends StatelessWidget {
+  final BillAnalysisResult result;
+  final bool isDark;
+  final ThemeData theme;
+  final String? imagePath;
+
+  const _SummaryTab({
+    required this.result,
+    required this.isDark,
+    required this.theme,
+    this.imagePath,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final r = result;
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Image thumbnail
+        if (imagePath != null && File(imagePath!).existsSync())
+          _SectionCard(
+            title: '📸 Original Bill',
+            isDark: isDark,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(imagePath!),
+                height: 200,
+                width: double.infinity,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+
+        // AI Insights Card
+        if (r.bill.aiNotes != null && r.bill.aiNotes!.isNotEmpty)
+          _SectionCard(
+            title: '✨ AI Audit Summary (${r.bill.aiModelUsed?.split('/').last ?? 'LLM'})',
+            isDark: isDark,
+            child: Text(
+              r.bill.aiNotes!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                height: 1.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+
+        // Financial summary
+        _SectionCard(
+          title: '💰 Financial Summary',
+          isDark: isDark,
+          child: Column(
+            children: [
+              if (r.bill.itemsGrossTotal > 0)
+                _SummaryRow(
+                  'Gross Items Total',
+                  '₹${r.bill.itemsGrossTotal.toStringAsFixed(2)}',
+                  theme,
+                ),
+              if (r.bill.totalDiscountAmount > 0)
+                _SummaryRow(
+                  'Discounts / Savings',
+                  '-₹${r.bill.totalDiscountAmount.toStringAsFixed(2)}',
+                  theme,
+                  color: const Color(0xFF16A34A),
+                ),
+              _SummaryRow(
+                'Taxable Base Amount',
+                r.bill.taxes.subtotal != null
+                    ? '₹${r.bill.taxes.subtotal!.toStringAsFixed(2)}'
+                    : (r.bill.computedSubtotal > 0
+                        ? '₹${r.bill.computedSubtotal.toStringAsFixed(2)}'
+                        : '—'),
+                theme,
+              ),
+              _SummaryRow(
+                'Total GST & Taxes',
+                '₹${r.bill.taxes.totalPrintedTax.toStringAsFixed(2)}',
+                theme,
+                color: r.bill.taxes.totalPrintedTax > 0 ? const Color(0xFF2563EB) : null,
+              ),
+              if (r.bill.totalCharges > 0)
+                _SummaryRow(
+                  'Additional Charges',
+                  '₹${r.bill.totalCharges.toStringAsFixed(2)}',
+                  theme,
+                  color: const Color(0xFFD97706),
+                ),
+              if (r.bill.taxes.roundOff != null && r.bill.taxes.roundOff != 0)
+                _SummaryRow(
+                  'Round-Off Adjustment',
+                  '${r.bill.taxes.roundOff! > 0 ? "+" : ""}₹${r.bill.taxes.roundOff!.toStringAsFixed(2)}',
+                  theme,
+                ),
+              const Divider(height: 20),
+              _SummaryRow(
+                'Calculated Net Amount',
+                '₹${(r.computedTotal ?? r.bill.calculatedNetTotal ?? r.printedTotal ?? 0.0).toStringAsFixed(2)}',
+                theme,
+                color: const Color(0xFF16A34A),
+              ),
+              _SummaryRow(
+                'Bill Grand Total (printed)',
+                r.printedTotal != null ? '₹${r.printedTotal!.toStringAsFixed(2)}' : '—',
+                theme,
+              ),
+              if (r.potentialExcess != null && r.potentialExcess! > 0)
+                Container(
+                  margin: const EdgeInsets.only(top: 10),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDC2626).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFDC2626).withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Potential Overcharge: ₹${r.potentialExcess!.toStringAsFixed(2)} printed over calculated sum.',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFDC2626),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Accurate GST breakdown
+        _SectionCard(
+          title: '🧾 GST Breakdown',
+          isDark: isDark,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Supply type badge
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: (r.bill.isInterState ? Colors.indigo : Colors.teal).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: (r.bill.isInterState ? Colors.indigo : Colors.teal).withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Text(
+                  r.bill.isInterState
+                      ? '🌐 Inter-State Supply (IGST Applicable)'
+                      : (r.bill.isIntraState
+                          ? '🏛️ Intra-State Supply (CGST + SGST/UTGST Split)'
+                          : '📄 Composition / Non-GST Supply'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: r.bill.isInterState ? Colors.indigo : Colors.teal,
+                  ),
+                ),
+              ),
+
+              if (r.bill.taxes.cgstAmount != null)
+                _SummaryRow(
+                  'CGST (Central GST)${r.bill.taxes.cgstRate != null ? " @ ${r.bill.taxes.cgstRate}%" : ""}',
+                  '₹${r.bill.taxes.cgstAmount!.toStringAsFixed(2)}',
+                  theme,
+                ),
+              if (r.bill.taxes.sgstAmount != null)
+                _SummaryRow(
+                  'SGST (State/UT GST)${r.bill.taxes.sgstRate != null ? " @ ${r.bill.taxes.sgstRate}%" : ""}',
+                  '₹${r.bill.taxes.sgstAmount!.toStringAsFixed(2)}',
+                  theme,
+                ),
+              if (r.bill.taxes.igstAmount != null)
+                _SummaryRow(
+                  'IGST (Integrated GST)${r.bill.taxes.igstRate != null ? " @ ${r.bill.taxes.igstRate}%" : ""}',
+                  '₹${r.bill.taxes.igstAmount!.toStringAsFixed(2)}',
+                  theme,
+                ),
+              if (r.bill.taxes.cessAmount != null && r.bill.taxes.cessAmount! > 0)
+                _SummaryRow(
+                  'Compensation Cess',
+                  '₹${r.bill.taxes.cessAmount!.toStringAsFixed(2)}',
+                  theme,
+                ),
+
+              if (r.bill.taxes.effectiveGstRate != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: _SummaryRow(
+                    'Effective GST Rate',
+                    '${r.bill.taxes.effectiveGstRate!.toStringAsFixed(1)}%',
+                    theme,
+                    color: const Color(0xFF2563EB),
+                  ),
+                ),
+
+              const Divider(height: 16),
+              _SummaryRow(
+                'Total GST Tax',
+                '₹${r.bill.taxes.totalPrintedTax.toStringAsFixed(2)}',
+                theme,
+                color: const Color(0xFF16A34A),
+              ),
+
+              if (r.bill.taxes.cgstAmount == null &&
+                  r.bill.taxes.sgstAmount == null &&
+                  r.bill.taxes.igstAmount == null &&
+                  r.bill.taxes.totalPrintedTax == 0)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'No separate GST split found on this receipt.',
+                    style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Extra charges
+        if (r.bill.charges.isNotEmpty)
+          _SectionCard(
+            title: '🧮 Extra Charges',
+            isDark: isDark,
+            child: Column(
+              children: r.bill.charges.map((c) {
+                return _SummaryRow(
+                  c.label,
+                  '₹${c.amount.toStringAsFixed(2)}',
+                  theme,
+                  color: c.isServiceCharge ? const Color(0xFFD97706) : null,
+                );
+              }).toList(),
+            ),
+          ),
+
+        // Item list
+        if (r.itemResults.isNotEmpty)
+          _SectionCard(
+            title: '🔍 Item Analysis',
+            isDark: isDark,
+            child: Column(
+              children: r.itemResults.map((ir) {
+                final color = ir.status == FindingSeverity.ok
+                    ? const Color(0xFF16A34A)
+                    : const Color(0xFFD97706);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: color.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(ir.status.emoji, style: const TextStyle(fontSize: 14)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(ir.item.name,
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600)),
+                            if (ir.item.quantity != null && ir.item.unitPrice != null)
+                              Text(
+                                'Qty: ${ir.item.quantity} × ₹${ir.item.unitPrice!.toStringAsFixed(2)}',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        ir.item.lineTotal != null
+                            ? '₹${ir.item.lineTotal!.toStringAsFixed(2)}'
+                            : '—',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: color),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ─── Findings Tab ─────────────────────────────────────────────────────────────
+
+class _FindingsTab extends StatelessWidget {
+  final List<AnalysisFinding> findings;
+  final String emptyLabel;
+  final Set<String> expandedIds;
+  final void Function(String id) onToggle;
+
+  const _FindingsTab({
+    required this.findings,
+    required this.emptyLabel,
+    required this.expandedIds,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (findings.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('✅', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 12),
+            Text(emptyLabel,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: findings.map((f) {
+        return FindingCard(
+          finding: f,
+          isExpanded: expandedIds.contains(f.id),
+          onTap: () => onToggle(f.id),
+        );
+      }).toList(),
+    );
+  }
+}
+
+// ─── GSTIN Tab ────────────────────────────────────────────────────────────────
+
+class _GstinTab extends StatelessWidget {
+  final GstinVerification? verification;
+  final bool isDark;
+  final ThemeData theme;
+
+  const _GstinTab({
+    required this.verification,
+    required this.isDark,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (verification == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('⚪', style: TextStyle(fontSize: 40)),
+            const SizedBox(height: 12),
+            const Text('No GSTIN found on this bill',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text(
+              'GSTIN is required on all invoices where the supplier is GST-registered.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final v = verification!;
+    final color = v.status == GstinStatus.valid
+        ? const Color(0xFF16A34A)
+        : const Color(0xFFDC2626);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: isDark ? 0.12 : 0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            children: [
+              Text(v.emoji, style: const TextStyle(fontSize: 40)),
+              const SizedBox(height: 8),
+              Text(v.gstin,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    fontFamily: 'monospace',
+                    letterSpacing: 1.5,
+                  )),
+              const SizedBox(height: 6),
+              Text(v.statusText,
+                  style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+              if (v.isLiveVerified)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text('🟢 Live verified from GST Portal',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF16A34A))),
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text('🟡 Offline checksum validation only',
+                      style: TextStyle(fontSize: 12, color: Color(0xFFD97706))),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (v.legalName != null) _InfoRow('Legal Name', v.legalName!, theme),
+        if (v.tradeName != null) _InfoRow('Trade Name', v.tradeName!, theme),
+        if (v.registrationStatus != null)
+          _InfoRow('Status', v.registrationStatus!, theme),
+        if (v.registrationDate != null)
+          _InfoRow('Registered On', v.registrationDate!, theme),
+        if (v.stateCode != null) _InfoRow('State', v.stateCode!, theme),
+        if (v.errorMessage != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.orange, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(v.errorMessage!,
+                      style: const TextStyle(fontSize: 12, color: Colors.orange)),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: () => UrlLauncherUtil.openUrl(
+              context, 'https://www.gst.gov.in/searchtaxpayer'),
+          icon: const Icon(Icons.open_in_new, size: 16),
+          label: const Text('Verify on GST Portal'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Sources Tab ──────────────────────────────────────────────────────────────
+
+class _SourcesTab extends StatelessWidget {
+  final List<GovernmentSource> sources;
+  final bool isDark;
+  final ThemeData theme;
+
+  const _SourcesTab({
+    required this.sources,
+    required this.isDark,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF9D00FF).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF9D00FF).withValues(alpha: 0.2)),
+          ),
+          child: Text(
+            'All rules and findings are based on official Indian government sources. '
+            'Cached rules are from publicly available government notifications and are '
+            'clearly marked as cached vs live.',
+            style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...sources.map((s) => _SourceCard(source: s, isDark: isDark, theme: theme)),
+      ],
+    );
+  }
+}
+
+class _SourceCard extends StatelessWidget {
+  final GovernmentSource source;
+  final bool isDark;
+  final ThemeData theme;
+
+  const _SourceCard({required this.source, required this.isDark, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF22062C) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.account_balance_rounded, size: 16, color: Color(0xFF9D00FF)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(source.title,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: source.status == SourceVerificationStatus.live
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  source.statusLabel,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: source.status == SourceVerificationStatus.live
+                        ? Colors.green
+                        : Colors.orange,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(source.description,
+              style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12, height: 1.4)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.business_outlined, size: 12, color: Color(0xFF6B7280)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(source.organization,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+              ),
+            ],
+          ),
+          if (source.effectiveDate != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.calendar_today_outlined, size: 12, color: Color(0xFF6B7280)),
+                const SizedBox(width: 4),
+                Text('Effective: ${source.effectiveDate}',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+              ],
+            ),
+          ],
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => UrlLauncherUtil.openUrl(context, source.url),
+            child: Row(
+              children: [
+                const Icon(Icons.open_in_new, size: 14, color: Color(0xFF2563EB)),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    source.url,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF2563EB),
+                      decoration: TextDecoration.underline,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Reusable widgets ─────────────────────────────────────────────────────────
+
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final bool isDark;
+
+  const _SectionCard({required this.title, required this.child, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF22062C) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Text(title,
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Inter')),
+          ),
+          const Divider(height: 16),
+          Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final ThemeData theme;
+  final Color? color;
+
+  const _SummaryRow(this.label, this.value, this.theme, {this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13)),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final ThemeData theme;
+
+  const _InfoRow(this.label, this.value, this.theme);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(label,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+          ),
+          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
+        ],
+      ),
+    );
+  }
+}

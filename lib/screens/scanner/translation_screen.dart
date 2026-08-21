@@ -1,19 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../services/translation_service.dart';
+import '../../services/ocr_service.dart';
 import '../../services/scan_history_service.dart';
 import '../../widgets/language_picker_sheet.dart';
+import '../../models/scan_result_model.dart';
+import 'image_overlay_translation_screen.dart';
 
 /// Full translation screen powered by Google ML Kit on-device translation
 /// with automatic high-speed cloud fallback so translation never hangs.
+/// Supports text input, image OCR, and PDF extraction.
 class TranslationScreen extends StatefulWidget {
   final String initialText;
   final ScanHistoryService historyService;
+  final OcrService? ocrService;
 
   const TranslationScreen({
     Key? key,
     required this.initialText,
     required this.historyService,
+    this.ocrService,
   }) : super(key: key);
 
   @override
@@ -22,6 +30,7 @@ class TranslationScreen extends StatefulWidget {
 
 class _TranslationScreenState extends State<TranslationScreen> {
   final TranslationService _translationService = TranslationService();
+  late final OcrService _ocrService;
 
   AppLanguage _sourceLang = SupportedLanguages.english;
   AppLanguage _targetLang = SupportedLanguages.hindi;
@@ -33,11 +42,17 @@ class _TranslationScreenState extends State<TranslationScreen> {
   bool _isOnlineFallback = false;
   bool _saved = false;
 
+  // Track current input text and image (for image overlay translation)
+  late String _inputText;
+  OcrResult? _lastOcrResult;
+  bool _isExtractingText = false;
+
   @override
   void initState() {
     super.initState();
-    // Automatically start translation on screen entry if text is present
-    if (widget.initialText.trim().isNotEmpty) {
+    _ocrService = widget.ocrService ?? OcrService();
+    _inputText = widget.initialText;
+    if (_inputText.trim().isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _translate();
       });
@@ -51,6 +66,8 @@ class _TranslationScreenState extends State<TranslationScreen> {
   }
 
   Future<void> _translate() async {
+    final text = _inputText.trim();
+    if (text.isEmpty) return;
     setState(() {
       _status = TranslationStatus.checkingModel;
       _downloadProgress = 0.1;
@@ -62,7 +79,7 @@ class _TranslationScreenState extends State<TranslationScreen> {
 
     try {
       await for (final progress in _translationService.translate(
-        widget.initialText,
+        text,
         from: _sourceLang,
         to: _targetLang,
       )) {
@@ -103,6 +120,164 @@ class _TranslationScreenState extends State<TranslationScreen> {
         ),
       );
     }
+  }
+
+  /// Pick PDF or image file and extract text via OCR
+  Future<void> _pickAndExtract() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'pdf'],
+      allowMultiple: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    final path = file.path;
+    if (path == null || !mounted) return;
+
+    final ext = (file.extension ?? '').toLowerCase();
+
+    if (ext == 'pdf') {
+      // PDFs: notify user to convert to image
+      setState(() {
+        _errorMessage = 'PDF files cannot be directly translated. '  
+            'Please export/screenshot the PDF as an image (JPG/PNG) and retry. '
+            'This is a limitation of on-device OCR.';
+        _inputText = '';
+      });
+      return;
+    }
+
+    setState(() {
+      _isExtractingText = true;
+      _errorMessage = null;
+      _translatedText = null;
+    });
+
+    try {
+      final ocr = await _ocrService.recognizeFromPath(path);
+      await widget.historyService.addOcr(ocr);
+      if (!mounted) return;
+      setState(() {
+        _inputText = ocr.fullText;
+        _lastOcrResult = ocr;
+        _isExtractingText = false;
+      });
+      _translate();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isExtractingText = false;
+          _errorMessage = 'Failed to extract text: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _captureFromCamera() async {
+    final picker = ImagePicker();
+    final photo = await picker.pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.rear,
+      imageQuality: 95,
+    );
+    if (photo == null || !mounted) return;
+    setState((){
+      _isExtractingText = true;
+      _errorMessage = null;
+      _translatedText = null;
+    });
+    try {
+      final ocr = await _ocrService.recognizeFromPath(photo.path);
+      await widget.historyService.addOcr(ocr);
+      if (!mounted) return;
+      setState(() {
+        _inputText = ocr.fullText;
+        _lastOcrResult = ocr;
+        _isExtractingText = false;
+      });
+      _translate();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isExtractingText = false;
+          _errorMessage = 'OCR error: $e';
+        });
+      }
+    }
+  }
+
+  void _openImageOverlay() {
+    final ocrResult = _lastOcrResult;
+    if (ocrResult == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImageOverlayTranslationScreen(ocrResult: ocrResult),
+      ),
+    );
+  }
+  void _showUploadSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Upload to Translate',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 14),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined,
+                      color: Color(0xFF2563EB)),
+                  title: const Text('Pick image from gallery'),
+                  subtitle: const Text('JPG, PNG, WEBP supported'),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAndExtract();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt_outlined,
+                      color: Color(0xFF9D00FF)),
+                  title: const Text('Take photo with camera'),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _captureFromCamera();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.picture_as_pdf_outlined,
+                      color: Color(0xFFFF4081)),
+                  title: const Text('PDF file (text extraction)'),
+                  subtitle: const Text(
+                      'Select PDF — text will be extracted if embeddable'),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAndExtract();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _pickSourceLang() async {
@@ -160,6 +335,18 @@ class _TranslationScreenState extends State<TranslationScreen> {
         title: const Text('Translate'),
         centerTitle: true,
         actions: [
+          // Upload PDF/Image button
+          IconButton(
+            icon: const Icon(Icons.upload_file_outlined),
+            tooltip: 'Upload image or PDF to translate',
+            onPressed: _isExtractingText ? null : _showUploadSheet,
+          ),
+          if (_lastOcrResult != null)
+            IconButton(
+              icon: const Icon(Icons.image_search_outlined),
+              tooltip: 'View translation on image',
+              onPressed: _openImageOverlay,
+            ),
           if (_translatedText != null && !_saved)
             IconButton(
               icon: const Icon(Icons.bookmark_add_outlined),
@@ -192,14 +379,29 @@ class _TranslationScreenState extends State<TranslationScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Original text card
-                  _TextCard(
-                    label: _sourceLang.displayName,
-                    text: widget.initialText,
-                    isOriginal: true,
-                    theme: theme,
-                    isDark: isDark,
-                  ),
+                  // Original text card — shows text from upload or initial
+                  _isExtractingText
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(32),
+                            child: Column(
+                              children: [
+                                CircularProgressIndicator(),
+                                SizedBox(height: 12),
+                                Text('Extracting text from image…'),
+                              ],
+                            ),
+                          ),
+                        )
+                      : _TextCard(
+                          label: _sourceLang.displayName,
+                          text: _inputText.isNotEmpty
+                              ? _inputText
+                              : widget.initialText,
+                          isOriginal: true,
+                          theme: theme,
+                          isDark: isDark,
+                        ),
                   const SizedBox(height: 16),
 
                   // Status / progress / result

@@ -1,13 +1,31 @@
+import 'package:flutter/painting.dart' show Rect;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 /// Scan type enum for filtering history
-enum ScanType { ocr, qrCode, barcode, translation }
+enum ScanType { ocr, qrCode, barcode, translation, billAnalysis }
+
+/// Individual text line with its bounding box
+class OcrLineItem {
+  final String text;
+  final Rect? boundingBox;
+  OcrLineItem({required this.text, this.boundingBox});
+}
 
 /// Individual text block from OCR
 class OcrBlock {
   final String text;
   final List<String> lines;
-  OcrBlock({required this.text, required this.lines});
+  final List<OcrLineItem> lineItems;
+  /// Bounding box on the original image (in image-pixel coordinates).
+  /// Null if not available (e.g. reconstructed from history).
+  final Rect? boundingBox;
+
+  OcrBlock({
+    required this.text,
+    required this.lines,
+    this.lineItems = const [],
+    this.boundingBox,
+  });
 }
 
 /// Result of OCR on an image
@@ -26,12 +44,49 @@ class OcrResult {
 
   bool get isEmpty => fullText.trim().isEmpty;
 
-  /// Build from ML Kit RecognizedText
+  /// All individual line items across all blocks
+  List<OcrLineItem> get allLines {
+    final list = <OcrLineItem>[];
+    for (final b in blocks) {
+      if (b.lineItems.isNotEmpty) {
+        list.addAll(b.lineItems);
+      } else {
+        for (final l in b.lines) {
+          list.add(OcrLineItem(text: l, boundingBox: b.boundingBox));
+        }
+      }
+    }
+    return list;
+  }
+
+  /// Build from ML Kit RecognizedText — captures bounding boxes per block and per line.
   factory OcrResult.fromMlKit(RecognizedText recognized, String imagePath) {
     final blocks = recognized.blocks.map((b) {
+      // Convert ML Kit boundingBox to Flutter Rect.
+      final r = b.boundingBox;
+      final rect = Rect.fromLTWH(
+        r.left.toDouble(),
+        r.top.toDouble(),
+        r.width.toDouble(),
+        r.height.toDouble(),
+      );
+
+      final lineItems = b.lines.map((l) {
+        final lr = l.boundingBox;
+        final lRect = Rect.fromLTWH(
+          lr.left.toDouble(),
+          lr.top.toDouble(),
+          lr.width.toDouble(),
+          lr.height.toDouble(),
+        );
+        return OcrLineItem(text: l.text, boundingBox: lRect);
+      }).toList();
+
       return OcrBlock(
         text: b.text,
         lines: b.lines.map((l) => l.text).toList(),
+        lineItems: lineItems,
+        boundingBox: rect,
       );
     }).toList();
 
@@ -139,6 +194,8 @@ class ScanHistoryItem {
         return 'Barcode';
       case ScanType.translation:
         return 'Translation';
+      case ScanType.billAnalysis:
+        return 'Bill Analysis';
     }
   }
 

@@ -1,0 +1,14 @@
+{
+  "name": "avishkar-nyayasathi",
+  "version": "1.0.0",
+  "scripts": {
+    "ruflo:status": "ruflo status",
+    "ruflo:doctor": "ruflo doctor",
+    "ruflo:swarm": "ruflo swarm init",
+    "ruflo:daemon": "ruflo daemon start",
+    "ruflo:memory": "ruflo memory search -q"
+  },
+  "devDependencies": {
+    "ruflo": "^3.38.12"
+  }
+}

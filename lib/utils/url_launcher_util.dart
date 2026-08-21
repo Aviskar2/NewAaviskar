@@ -6,6 +6,22 @@ import '../models/scan_result_model.dart';
 /// Comprehensive utility for launching URLs, phone numbers, emails, maps,
 /// and web searches from scan results.
 class UrlLauncherUtil {
+  /// Simple URL launcher without requiring BuildContext
+  static Future<bool> launch(String rawUrl) async {
+    String url = rawUrl.trim();
+    if (url.isEmpty) return false;
+    if (!url.startsWith(RegExp(r'^[a-zA-Z0-9+.-]+://'))) {
+      url = 'https://$url';
+    }
+    try {
+      final uri = Uri.tryParse(url);
+      if (uri != null) {
+        return await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {}
+    return false;
+  }
+
   /// Open a URL safely with multiple fallback strategies.
   static Future<bool> openUrl(BuildContext context, String rawUrl) async {
     String url = rawUrl.trim();

@@ -10,36 +10,14 @@ void main() {
 
     // Verify initial header and buttons
     expect(find.text('Aura Assistant'), findsOneWidget);
+    expect(find.text('Document Analyzer'), findsWidgets);
+    expect(find.text('Bill'), findsWidgets);
     expect(find.text('Translation'), findsWidgets);
     expect(find.text('Scanner'), findsWidgets);
     expect(find.text('Documents'), findsWidgets);
 
-    // Initial mode is Translation Active
-    expect(find.text('Translation Active'), findsOneWidget);
-
-    // Tap Scanner button
-    final scannerBtn = find.text('Scanner').first;
-    await tester.tap(scannerBtn);
-    await tester.pumpAndSettle();
-
-    // Verify Scanner is now active
-    expect(find.text('Scanner Active'), findsOneWidget);
-
-    // Tap Documents button
-    final docsBtn = find.text('Documents').first;
-    await tester.tap(docsBtn);
-    await tester.pumpAndSettle();
-
-    // Verify Documents is now active
-    expect(find.text('Documents Active'), findsOneWidget);
-
-    // Tap Translation button
-    final transBtn = find.text('Translation').first;
-    await tester.tap(transBtn);
-    await tester.pumpAndSettle();
-
-    // Verify Translation is active again
-    expect(find.text('Translation Active'), findsOneWidget);
+    // Initial mode is 'Upload to Begin'
+    expect(find.text('Upload to Begin'), findsOneWidget);
   });
 
   testWidgets('Sending a message in chat adds message to stream', (WidgetTester tester) async {
@@ -56,4 +34,3 @@ void main() {
     expect(find.text('Hello Aura AI'), findsOneWidget);
   });
 }
-
