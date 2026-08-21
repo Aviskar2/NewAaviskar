@@ -17,18 +17,17 @@ void main() {
     expect(find.text('Scanner Hub'), findsWidgets);
   });
 
-  testWidgets('Sending a message in chat adds message to stream', (WidgetTester tester) async {
+  testWidgets('Tapping Bill & GST card opens Bill Analyzer screen', (WidgetTester tester) async {
     await tester.pumpWidget(const AuraApp());
     await tester.pumpAndSettle();
 
-    final inputField = find.byType(TextField);
-    expect(inputField, findsOneWidget);
+    // Tap on Bill & GST card
+    final billCard = find.text('Bill & GST');
+    expect(billCard, findsWidgets);
+    await tester.tap(billCard.first);
+    await tester.pumpAndSettle();
 
-    await tester.enterText(inputField, 'Hello NyayaSathi');
-    await tester.tap(find.byIcon(Icons.send_rounded));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
-
-    expect(find.text('Hello NyayaSathi'), findsOneWidget);
+    // Verify Bill Analyzer Entry screen is loaded
+    expect(find.text('Indian Bill & Invoice Analyzer'), findsOneWidget);
   });
 }
