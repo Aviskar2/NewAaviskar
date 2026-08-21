@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import '../../models/analysis_result.dart';
 import '../../models/bill_model.dart';
+import '../../theme/app_colors.dart';
 import 'chat_finding_card.dart';
 
 class BillAnalysisInlineCard extends StatefulWidget {
@@ -45,11 +46,12 @@ class _BillAnalysisInlineCardState extends State<BillAnalysisInlineCard>
     super.dispose();
   }
 
-  Color _verdictColor() {
+  Color _verdictColor(BuildContext context) {
+    final appColors = Theme.of(context).extension<AppColors>()!;
     switch (widget.result.overallResult) {
-      case OverallResult.looksCorrect: return const Color(0xFF16A34A);
-      case OverallResult.needsVerification: return const Color(0xFFD97706);
-      case OverallResult.suspiciousCharges: return const Color(0xFFDC2626);
+      case OverallResult.looksCorrect: return appColors.success;
+      case OverallResult.needsVerification: return appColors.warning;
+      case OverallResult.suspiciousCharges: return appColors.error;
     }
   }
 
@@ -66,7 +68,7 @@ class _BillAnalysisInlineCardState extends State<BillAnalysisInlineCard>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final r = widget.result;
-    final color = _verdictColor();
+    final color = _verdictColor(context);
 
     return FadeTransition(
       opacity: _fadeAnimation,

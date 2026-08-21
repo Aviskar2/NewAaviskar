@@ -6,11 +6,10 @@ import '../services/ocr_service.dart';
 import '../services/scan_history_service.dart';
 import '../models/analysis_result.dart';
 import '../widgets/bill_analysis/bill_analysis_inline_card.dart';
-import '../widgets/translation_mode_sheet.dart';
 import 'scanner/qr_scanner_screen.dart';
 import 'scanner/scanner_hub_screen.dart';
-import 'bill_analyzer/bill_analyzer_entry_screen.dart';
 import 'bill_analyzer/bill_analysis_screen.dart';
+import 'bill_analyzer/bill_analyzer_entry_screen.dart';
 import 'legal_analyzer/legal_analyzer_entry_screen.dart';
 import 'legal_analyzer/legal_analysis_screen.dart';
 import 'medicine_safety/medicine_entry_screen.dart';
@@ -91,7 +90,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   void _onFeatureButtonTapped(String feature) {
     HapticFeedback.lightImpact();
 
-    // If an attachment exists, execute with that attachment
     if (_pendingAttachment != null) {
       final prompt = _messageController.text.trim();
       _executeWithPendingAttachment(feature, prompt: prompt.isNotEmpty ? prompt : null);
@@ -99,7 +97,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       return;
     }
 
-    // Direct routing to the full screen
     widget.onExecuteFeature(
       feature: feature,
       document: {},
@@ -109,69 +106,25 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
   Color _getFeatureColor(String? feature) {
     switch (feature) {
+      case 'Legal Analyzer':
+      case 'Legal Risk':
+      case 'Document Analyzer':
+      case 'Legal':
+        return const Color(0xFFDC2626); // Crimson Red
+      case 'Bill Analyzer':
+      case 'Bill':
+      case 'GST':
+        return const Color(0xFF16A34A); // Emerald Green
       case 'Translation':
       case 'Translate':
         return const Color(0xFF2563EB); // Electric Blue
       case 'Scanner':
       case 'QR':
-        return const Color(0xFF9D00FF); // Vibrant Purple
-      case 'Documents':
-        return const Color(0xFFFF4081); // Coral / Pink
-      case 'Bill Analyzer':
-      case 'Bill':
-      case 'GST':
-        return const Color(0xFF16A34A); // Emerald Green
-      case 'Document Analyzer':
-      case 'Legal Analyzer':
-      case 'Legal Risk':
-      case 'Legal':
-        return const Color(0xFFDC2626); // Crimson Red
-      case 'Product Safety':
-      case 'Food Safety':
-      case 'Food':
-      case 'FSSAI':
-        return const Color(0xFF0F766E); // Teal / Food Green
-      case 'Medicine':
       case 'Medicine Safety':
-      case 'Pharma':
-      case 'Jan Aushadhi':
-        return const Color(0xFFBE185D); // Rose / Pharma Red
+      case 'Product Safety':
+        return const Color(0xFF7C3AED); // Royal Purple
       default:
         return const Color(0xFF2563EB);
-    }
-  }
-
-  IconData _getFeatureIcon(String? feature) {
-    switch (feature) {
-      case 'Translation':
-      case 'Translate':
-        return Icons.translate_rounded;
-      case 'Scanner':
-      case 'QR':
-        return Icons.qr_code_scanner_rounded;
-      case 'Documents':
-        return Icons.description_rounded;
-      case 'Bill Analyzer':
-      case 'Bill':
-      case 'GST':
-        return Icons.receipt_long_rounded;
-      case 'Document Analyzer':
-      case 'Legal Analyzer':
-      case 'Legal Risk':
-      case 'Legal':
-        return Icons.gavel_rounded;
-      case 'Product Safety':
-      case 'Food Safety':
-      case 'Food':
-      case 'FSSAI':
-        return Icons.health_and_safety_rounded;
-      case 'Medicine':
-      case 'Medicine Safety':
-      case 'Pharma':
-      case 'Jan Aushadhi':
-        return Icons.medication_rounded;
-      default:
-        return Icons.auto_awesome_rounded;
     }
   }
 
@@ -231,7 +184,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     );
   }
 
-  // Option 1: Gallery or files
+  // Option 1: Pick from gallery or files
   Future<void> _pickFromGalleryOrFiles() async {
     try {
       final result = await FilePicker.pickFiles(
@@ -277,7 +230,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
         if (mounted) {
           _showMinimalToast(
-            'Attached "$name". Select an analyzer above or send to process.',
+            'Attached "$name". Select a tool above or press send.',
             Icons.check_circle_outline,
             Theme.of(context).colorScheme.primary,
           );
@@ -290,7 +243,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     }
   }
 
-  // Option 2: Camera capture
+  // Option 2: Camera photo
   Future<void> _captureFromCamera() async {
     try {
       final picker = ImagePicker();
@@ -302,7 +255,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       if (photo != null) {
         final name = photo.name.isNotEmpty
             ? photo.name
-            : 'Camera_Photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+            : 'Photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
         final bytes = await photo.readAsBytes();
         final sizeInBytes = bytes.length;
         String size;
@@ -327,7 +280,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
         if (mounted) {
           _showMinimalToast(
-            'Photo captured! Select an analyzer above or send.',
+            'Photo captured! Select a tool above or press send.',
             Icons.check_circle_outline,
             Theme.of(context).colorScheme.primary,
           );
@@ -354,7 +307,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     );
   }
 
-  // Upload options bottom sheet
   void _showUploadBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -383,12 +335,11 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Add Document, Bill or Photo',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 17),
+                  'Attach Document, Bill or Photo',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 14),
 
-                // Option 1: Gallery / Files
                 _buildSheetOption(
                   context,
                   title: 'Upload Photo or Document from Gallery / Files',
@@ -403,7 +354,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
                 const SizedBox(height: 10),
 
-                // Option 2: Camera
                 _buildSheetOption(
                   context,
                   title: 'Capture with Camera',
@@ -418,13 +368,12 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
                 const SizedBox(height: 10),
 
-                // Option 3: QR / Barcode
                 _buildSheetOption(
                   context,
                   title: 'Scan QR Code or Barcode',
                   subtitle: 'Instant barcode verification & product lookups',
                   icon: Icons.qr_code_scanner_rounded,
-                  iconColor: const Color(0xFF9D00FF),
+                  iconColor: const Color(0xFF7C3AED),
                   onTap: () {
                     Navigator.pop(context);
                     _openQrScanner();
@@ -502,7 +451,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     );
   }
 
-  // ─── Help & Feature Guide Modal ──────────────────────────────────────────
   void _showHelpGuideSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -536,49 +484,42 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    '🛡️ How NyayaSathi AI Protects You',
+                    '🛡️ NyayaSathi AI Architecture',
                     style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Your citizen safety assistant powered by Indian law & determinism',
+                    'All legal, financial & safety tools verified with deterministic Indian statutory engines.',
                     style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 18),
 
                   _buildHelpPillarItem(
                     title: '1. Legal & Contract Risk Analyzer',
-                    subtitle: 'Scans rental leases, employment bonds & builder agreements. Detects illegal forfeiture, non-compete void clauses (Sec 27), and RERA violations.',
+                    subtitle: 'Audits rental agreements, employment bonds, and loans for unlawful forfeiture, unilateral termination, and Section 27 non-compete void clauses.',
                     icon: Icons.gavel_rounded,
                     color: const Color(0xFFDC2626),
                   ),
                   const SizedBox(height: 12),
                   _buildHelpPillarItem(
                     title: '2. Bill & GST Fraud Detector',
-                    subtitle: 'Verifies 15-digit GSTIN, audits CGST/SGST/IGST tax math, and flags illegal mandatory restaurant service charges (CCPA 2022).',
+                    subtitle: 'Audits CGST/SGST/IGST breakdown, verifies 15-digit GSTIN, and detects illegal mandatory restaurant service charges (CCPA 2022).',
                     icon: Icons.receipt_long_rounded,
                     color: const Color(0xFF16A34A),
                   ),
                   const SizedBox(height: 12),
                   _buildHelpPillarItem(
-                    title: '3. Medicine & Generic Savings (PMBJP)',
-                    subtitle: 'Finds therapeutic generic alternatives at Jan Aushadhi Kendras (save 50-80%), checks Drug Schedules (H, H1, X) & expiry dates.',
-                    icon: Icons.medication_rounded,
-                    color: const Color(0xFFBE185D),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildHelpPillarItem(
-                    title: '4. Food & Product Safety (FSSAI)',
-                    subtitle: 'Audits 14-digit FSSAI licenses, high sugar/fat traffic light alerts, banned additives & Made-in-India 890 GS1 barcodes.',
-                    icon: Icons.health_and_safety_rounded,
-                    color: const Color(0xFF0F766E),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildHelpPillarItem(
-                    title: '5. AI Live Translator & OCR Vision',
-                    subtitle: 'Translates printed/handwritten documents and camera overlays across 12+ Indian languages (Hindi, Tamil, Telugu, Marathi, etc.).',
+                    title: '3. AI Live Document Translator',
+                    subtitle: 'On-device translation across 12+ Indian languages for contracts, invoices, and photos with image overlay support.',
                     icon: Icons.translate_rounded,
                     color: const Color(0xFF2563EB),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildHelpPillarItem(
+                    title: '4. Universal Scanner Hub',
+                    subtitle: 'Integrates QR/Barcode scanning, Jan Aushadhi generic medicine savings (save up to 80%), and FSSAI 14-digit food safety audit all in one scanner.',
+                    icon: Icons.qr_code_scanner_rounded,
+                    color: const Color(0xFF7C3AED),
                   ),
                   const SizedBox(height: 20),
                   Container(
@@ -655,7 +596,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     );
   }
 
-  // ─── App Navigation Drawer ───────────────────────────────────────────────
   Widget _buildAppDrawer(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -664,7 +604,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       child: SafeArea(
         child: Column(
           children: [
-            // Drawer Header
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -741,25 +680,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     },
                   ),
                   _buildDrawerTile(
-                    title: 'Medicine & Pharma Safety',
-                    icon: Icons.medication_rounded,
-                    color: const Color(0xFFBE185D),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _onFeatureButtonTapped('Medicine Safety');
-                    },
-                  ),
-                  _buildDrawerTile(
-                    title: 'Food & Product Safety (FSSAI)',
-                    icon: Icons.health_and_safety_rounded,
-                    color: const Color(0xFF0F766E),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _onFeatureButtonTapped('Product Safety');
-                    },
-                  ),
-                  _buildDrawerTile(
-                    title: 'Live Camera Translator',
+                    title: 'AI Document Translator',
                     icon: Icons.translate_rounded,
                     color: const Color(0xFF2563EB),
                     onTap: () {
@@ -768,9 +689,9 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     },
                   ),
                   _buildDrawerTile(
-                    title: 'QR & Barcode Scanner',
+                    title: 'Universal Scanner (QR, Med & Food)',
                     icon: Icons.qr_code_scanner_rounded,
-                    color: const Color(0xFF9D00FF),
+                    color: const Color(0xFF7C3AED),
                     onTap: () {
                       Navigator.pop(context);
                       _onFeatureButtonTapped('Scanner');
@@ -847,109 +768,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     );
   }
 
-  // ─── Instant Sample Preset Testers ───────────────────────────────────────
-  void _runSampleRentalAgreement() {
-    final orchestrator = LegalOrchestrator();
-    const text = '''
-RESIDENTIAL LEASE AGREEMENT
-This Agreement made on 15th Day of March, 2024 between Mr. Rajesh Sharma (Lessor) and Priya Verma (Lessee).
-
-1. PREMISES: Flat 402, Sunshine Heights, Mumbai. Monthly rent of Rs. 35,000.
-2. SECURITY DEPOSIT: Lessee deposits Rs. 2,50,000. In case of any dispute, the security deposit is strictly non-refundable and the Lessor shall forfeit the entire deposit without inquiry.
-3. TERMINATION: The Lessor reserves the right to terminate immediately without notice or cause.
-4. LATE PAYMENT: Penalty of Rs. 10,000 plus interest @ 24% per annum.
-5. RESTRICTIONS: Lessee agrees not to practice any profession from home.
-''';
-    final doc = orchestrator.createDocumentFromText(text);
-    orchestrator.analyze(doc, forcedType: LegalDocumentType.rentalAgreement).then((result) {
-      if (mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => LegalAnalysisScreen(result: result)));
-      }
-    });
-  }
-
-  void _runSampleRestaurantBill() {
-    final orchestrator = BillAnalysisOrchestrator();
-    const text = '''
-SPICE VILLA RESTAURANT & BAR
-GSTIN: 27AABCS1429B1Z1
-Invoice No: SV-2026/894
-Date: 20/02/2026
-
-Items:
-1. Butter Chicken (Full)      1 x 450.00 = 450.00
-2. Garlic Naan               3 x  60.00 = 180.00
-3. Dal Makhani               1 x 280.00 = 280.00
-4. Mineral Water             2 x  40.00 =  80.00
-
-Subtotal:                                990.00
-Service Charge (10% Mandatory):           99.00
-Taxable Amount:                         1089.00
-CGST @ 2.5%:                              27.23
-SGST @ 2.5%:                              27.23
-Total GST:                                54.46
-
-Grand Total:                            1143.46
-Rounded Total:                          1144.00
-''';
-    orchestrator.analyze(text).then((result) {
-      if (mounted) {
-        final histService = widget.historyService ?? ScanHistoryService();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => BillAnalysisScreen(
-              result: result,
-              historyService: histService,
-            ),
-          ),
-        );
-      }
-    });
-  }
-
-  void _runSampleDolo650() {
-    final orchestrator = MedicineSafetyOrchestrator();
-    const text = '''
-DOLO 650 TABLETS
-Each uncoated tablet contains:
-Paracetamol IP 650 mg
-Mfg. Lic. No.: G/25/1458
-B.No.: DL9042
-MFD.: 01/2026
-EXP.: 12/2028
-MRP Rs. 34.00 (Incl. of all taxes)
-Manufactured in India by: Micro Labs Limited, Gujarat.
-''';
-    orchestrator.analyze(text).then((report) {
-      if (mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => MedicineAnalysisScreen(report: report)));
-      }
-    });
-  }
-
-  void _runSampleHighSugarDrink() {
-    final orchestrator = ProductSafetyOrchestrator();
-    const text = '''
-REAL MANGO NECTAR BEVERAGE
-Mfg Dt: 10/01/2026
-EXP: 10/10/2026
-Barcode: 8901491102034
-FSSAI Lic No: 10012011000168
-NUTRITIONAL INFORMATION (Per 100ml):
-Energy: 65 kcal
-Total Sugars: 15.0g
-Added Sugars: 13.5g
-Sodium: 15mg
-Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
-''';
-    orchestrator.analyze(text, rawBarcode: '8901491102034').then((report) {
-      if (mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ProductSafetyAnalysisScreen(report: report)));
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1001,9 +819,9 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
       body: SafeArea(
         child: Column(
           children: [
-            // Top Section: 5 Core Safety Pillars
+            // Top Section: Clean 2x2 Professional Grid (All visible on the same page with ZERO sliding!)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1011,7 +829,7 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Universal Safety Tools',
+                        'Core Safety Features',
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
                           color: theme.colorScheme.onSurface,
@@ -1031,7 +849,7 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
                             Icon(Icons.check_circle, size: 10, color: Color(0xFF16A34A)),
                             SizedBox(width: 4),
                             Text(
-                              '5 Offline Analyzers Ready',
+                              'Verified & Active',
                               style: TextStyle(
                                 color: Color(0xFF16A34A),
                                 fontWeight: FontWeight.bold,
@@ -1043,61 +861,60 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
 
-                  // 5 Main Pillar Cards (Horizontal Scroll)
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      children: [
-                        _buildHeroFeatureCard(
+                  // 2x2 Grid - All 4 core tools fit right on the screen
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildGridFeatureCard(
                           title: 'Legal Risk',
                           subtitle: 'Contracts & Scams',
                           icon: Icons.gavel_rounded,
                           color: const Color(0xFFDC2626),
                           featureKey: 'Legal Analyzer',
                         ),
-                        const SizedBox(width: 8),
-                        _buildHeroFeatureCard(
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildGridFeatureCard(
                           title: 'Bill & GST',
                           subtitle: 'Audit Tax & Charges',
                           icon: Icons.receipt_long_rounded,
                           color: const Color(0xFF16A34A),
                           featureKey: 'Bill Analyzer',
                         ),
-                        const SizedBox(width: 8),
-                        _buildHeroFeatureCard(
-                          title: 'Medicine',
-                          subtitle: 'Jan Aushadhi Gen.',
-                          icon: Icons.medication_rounded,
-                          color: const Color(0xFFBE185D),
-                          featureKey: 'Medicine Safety',
-                        ),
-                        const SizedBox(width: 8),
-                        _buildHeroFeatureCard(
-                          title: 'Food Safety',
-                          subtitle: 'FSSAI & Expiry',
-                          icon: Icons.health_and_safety_rounded,
-                          color: const Color(0xFF0F766E),
-                          featureKey: 'Product Safety',
-                        ),
-                        const SizedBox(width: 8),
-                        _buildHeroFeatureCard(
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildGridFeatureCard(
                           title: 'Live Translate',
-                          subtitle: 'Camera OCR & 12+',
+                          subtitle: 'Document & OCR',
                           icon: Icons.translate_rounded,
                           color: const Color(0xFF2563EB),
                           featureKey: 'Translation',
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildGridFeatureCard(
+                          title: 'Scanner Hub',
+                          subtitle: 'QR, Med & Food',
+                          icon: Icons.qr_code_scanner_rounded,
+                          color: const Color(0xFF7C3AED),
+                          featureKey: 'Scanner',
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 6),
             const Divider(height: 1),
 
             // Middle Section: Chat Conversations Stream
@@ -1118,7 +935,7 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
               ),
             ),
 
-            // Typing Indicator with smooth fade
+            // Typing Indicator
             AnimatedCrossFade(
               duration: const Duration(milliseconds: 250),
               crossFadeState: widget.isTyping ? CrossFadeState.showFirst : CrossFadeState.showSecond,
@@ -1150,31 +967,21 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
               secondChild: const SizedBox.shrink(),
             ),
 
-            // 1-Tap Quick Sample Chips row
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
-              child: Row(
+            // Quick Prompt Chips using Wrap (No horizontal sliding!)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 2.0),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
                 children: [
-                  _buildQuickSamplePill('📄 Rental Lease Sample', _runSampleRentalAgreement, const Color(0xFFDC2626)),
-                  const SizedBox(width: 6),
-                  _buildQuickSamplePill('🧾 Restaurant Bill Sample', _runSampleRestaurantBill, const Color(0xFF16A34A)),
-                  const SizedBox(width: 6),
-                  _buildQuickSamplePill('💊 Dolo 650 Generic Sample', _runSampleDolo650, const Color(0xFFBE185D)),
-                  const SizedBox(width: 6),
-                  _buildQuickSamplePill('🥤 Real Mango Sugar Sample', _runSampleHighSugarDrink, const Color(0xFF0F766E)),
-                  const SizedBox(width: 6),
                   _buildPromptChip('Is restaurant service charge mandatory?'),
-                  const SizedBox(width: 6),
-                  _buildPromptChip('Can landlord forfeit my deposit?'),
-                  const SizedBox(width: 6),
+                  _buildPromptChip('Can landlord forfeit deposit?'),
                   _buildPromptChip('How to file complaint on 1915?'),
                 ],
               ),
             ),
 
-            // Pending Attachment Card (if user has selected a file)
+            // Pending Attachment Card
             if (_pendingAttachment != null)
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
@@ -1217,7 +1024,7 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${_pendingAttachment!['size']} • Tap a safety tool above or press send',
+                            '${_pendingAttachment!['size']} • Tap a tool above or press send',
                             style: TextStyle(
                               fontSize: 11,
                               color: theme.colorScheme.primary,
@@ -1267,7 +1074,6 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
                   padding: const EdgeInsets.symmetric(horizontal: 6.0),
                   child: Row(
                     children: [
-                      // Upload Attachment Button
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
@@ -1341,8 +1147,8 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
     );
   }
 
-  // ─── Hero Feature Card ───────────────────────────────────────────────────
-  Widget _buildHeroFeatureCard({
+  // ─── Clean Grid Feature Card (Professional & Non-Sliding) ─────────────────
+  Widget _buildGridFeatureCard({
     required String title,
     required String subtitle,
     required IconData icon,
@@ -1356,87 +1162,63 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
       onTap: () => _onFeatureButtonTapped(featureKey),
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        width: 124,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
         decoration: BoxDecoration(
           color: isDark ? color.withValues(alpha: 0.12) : color.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: color.withValues(alpha: 0.28)),
           boxShadow: [
             BoxShadow(
-              color: color.withValues(alpha: 0.05),
+              color: color.withValues(alpha: 0.04),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(7),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: color, size: 18),
+              child: Icon(icon, color: color, size: 22),
             ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 12.5,
-                color: isDark ? Colors.white : color,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13.5,
+                      color: isDark ? Colors.white : color,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 11.0,
+                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 10.5,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Quick Sample Pill ───────────────────────────────────────────────────
-  Widget _buildQuickSamplePill(String label, VoidCallback onTap, Color color) {
-    return InkWell(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.play_circle_filled_rounded, color: color, size: 14),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: color.withValues(alpha: 0.6),
             ),
           ],
         ),
@@ -1454,7 +1236,7 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
         style: TextStyle(
           color: theme.colorScheme.primary,
           fontWeight: FontWeight.w600,
-          fontSize: 11.5,
+          fontSize: 11.0,
         ),
       ),
       onPressed: () {
@@ -1463,9 +1245,9 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
       backgroundColor: isDark ? const Color(0xFF2A0B35) : const Color(0xFFE5EEFF),
       side: BorderSide.none,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
     );
   }
 
@@ -1629,8 +1411,7 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
   }
 
   Widget _buildTranslationResultCard(Map<String, dynamic> msg) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     const accent = Color(0xFF2563EB);
 
     return Align(
@@ -1681,7 +1462,7 @@ Ingredients: Water, Mango Pulp (20%), Sugar, Acidity Regulator (INS 330).
 
   Widget _buildScannerResultCard(Map<String, dynamic> msg) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    const accent = Color(0xFF9D00FF);
+    const accent = Color(0xFF7C3AED);
 
     return Align(
       alignment: Alignment.centerLeft,

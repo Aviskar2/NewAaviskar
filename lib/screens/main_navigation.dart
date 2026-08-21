@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import '../theme/app_colors.dart';
 import 'home_dashboard_screen.dart';
 import 'history_screen.dart';
 import 'updates_screen.dart';
@@ -96,17 +97,16 @@ class MainNavigationState extends State<MainNavigation> {
     super.initState();
     // Load persisted scan history
     _scanHistoryService.load();
-    // Welcoming greeting message introducing NyayaSathi AI and its 5 safety pillars
+    // Welcoming greeting message introducing NyayaSathi AI and its core safety features
     activeMessages.add({
       'isUser': false,
-      'text': 'Namaste! I am NyayaSathi AI 🇮🇳 — your Citizen Legal, Bill, Medicine & Product Safety Assistant.\n\n'
+      'text': 'Namaste! I am NyayaSathi AI 🇮🇳 — your Citizen Legal, Financial & Consumer Safety Assistant.\n\n'
           'Here is what I can do for you:\n'
-          '• ⚖️ Scan rental, loan & work contracts for scam clauses and unfair penalties\n'
-          '• 🧾 Audit restaurant & grocery bills for illegal service charges and GST errors\n'
-          '• 💊 Check Jan Aushadhi generic medicine alternatives (save up to 80%)\n'
-          '• 🥗 Audit food labels for 14-digit FSSAI licenses & high sugar/fat warnings\n'
-          '• 🌐 Live camera & image OCR translation across 12+ Indian languages\n\n'
-          'Tap any feature card above, try a sample, or ask me any consumer rights question below!',
+          '• ⚖️ Legal Risk: Scan rental agreements, loans & contracts for scam clauses & unfair terms\n'
+          '• 🧾 Bill & GST: Audit restaurant & grocery bills for illegal service charges & tax errors\n'
+          '• 🌐 Live Translate: Translate documents & photos across 12+ Indian languages\n'
+          '• 🔍 Scanner Hub: QR & barcodes, Jan Aushadhi medicine savings & FSSAI food safety\n\n'
+          'Tap any tool above or ask me any consumer protection question below!',
       'type': 'text',
     });
   }
@@ -715,16 +715,16 @@ class MainNavigationState extends State<MainNavigation> {
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF180524) : Colors.white,
+          color: theme.colorScheme.surface,
           border: Border(
             top: BorderSide(
-              color: isDark ? const Color(0xFF2E0F38) : const Color(0xFFE9EFFB),
+              color: theme.colorScheme.outlineVariant,
               width: 1.0,
             ),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+              color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.25 : 0.04),
               blurRadius: 16,
               offset: const Offset(0, -4),
             ),

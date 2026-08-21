@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 import '../../services/ocr_service.dart';
 import '../../services/scan_history_service.dart';
 import 'qr_scanner_screen.dart';
-import 'universal_product_entry_screen.dart';
+import '../medicine_safety/medicine_entry_screen.dart';
+import '../product_safety/product_safety_entry_screen.dart';
 
-/// Unified Scanner Hub with 2 high-impact modes:
-/// 1. 🏷️ Live QR & Barcode Scanner
-/// 2. 🛡️ Universal Product & Safety Scanner (Food, Medicine, Cosmetics, FMCG)
+/// Unified Scanner & Safety Hub with 3 comprehensive modes:
+/// 1. 🏷️ QR & Barcode Scanner
+/// 2. 💊 Medicine Safety & Jan Aushadhi Generic Savings
+/// 3. 🥗 Food & Product Safety (FSSAI, Expiry & Nutrition)
 class ScannerHubScreen extends StatefulWidget {
   final OcrService ocrService;
   final ScanHistoryService historyService;
@@ -32,9 +34,9 @@ class _ScannerHubScreenState extends State<ScannerHubScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 2,
+      length: 3,
       vsync: this,
-      initialIndex: widget.initialTab.clamp(0, 1),
+      initialIndex: widget.initialTab.clamp(0, 2),
     );
   }
 
@@ -51,7 +53,10 @@ class _ScannerHubScreenState extends State<ScannerHubScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Universal Scanner Hub'),
+        title: const Text(
+          'Universal Scanner & Safety Hub',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         centerTitle: true,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
@@ -64,14 +69,20 @@ class _ScannerHubScreenState extends State<ScannerHubScreen>
               indicatorColor: const Color(0xFF2563EB),
               labelColor: const Color(0xFF2563EB),
               unselectedLabelColor: Colors.grey,
+              labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              unselectedLabelStyle: const TextStyle(fontSize: 12),
               tabs: const [
                 Tab(
                   icon: Icon(Icons.qr_code_scanner_rounded, size: 20),
-                  text: 'QR & Barcode',
+                  text: 'QR / Barcode',
                 ),
                 Tab(
-                  icon: Icon(Icons.verified_user_rounded, size: 20),
-                  text: 'Product & Safety',
+                  icon: Icon(Icons.medication_rounded, size: 20),
+                  text: 'Medicine',
+                ),
+                Tab(
+                  icon: Icon(Icons.health_and_safety_rounded, size: 20),
+                  text: 'Food Safety',
                 ),
               ],
             ),
@@ -84,7 +95,11 @@ class _ScannerHubScreenState extends State<ScannerHubScreen>
           QrScannerScreen(
             historyService: widget.historyService,
           ),
-          UniversalProductEntryScreen(
+          MedicineEntryScreen(
+            ocrService: widget.ocrService,
+            historyService: widget.historyService,
+          ),
+          ProductSafetyEntryScreen(
             ocrService: widget.ocrService,
             historyService: widget.historyService,
           ),

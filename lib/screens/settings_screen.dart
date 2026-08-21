@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool isLightMode;
@@ -328,18 +329,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     height: 48,
                     child: OutlinedButton.icon(
                       onPressed: _showLogoutDialog,
-                      icon: const Icon(Icons.logout, color: Colors.red),
-                      label: const Text(
+                      icon: Icon(Icons.logout, color: theme.colorScheme.error),
+                      label: Text(
                         'Log Out',
                         style: TextStyle(
-                          color: Colors.red,
+                          color: theme.colorScheme.error,
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
                       ),
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.redAccent, width: 1.0),
-                        backgroundColor: isDark ? const Color(0xFF32113D) : const Color(0xFFFEEBEE),
+                        side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.5), width: 1.0),
+                        backgroundColor: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -362,18 +363,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required List<Widget> children,
   }) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.extension<AppColors>()!;
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF22062C) : Colors.white,
+        color: appColors.surfaceElevated,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF),
-        ),
+        border: Border.all(color: appColors.surfaceBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -422,7 +421,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.extension<AppColors>()!;
 
     return Column(
       children: [
@@ -435,12 +434,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: isDark ? theme.colorScheme.primaryContainer : iconBgColor,
+                    color: appColors.surfaceSubtle,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     icon,
-                    color: isDark ? theme.colorScheme.primary : iconColor,
+                    color: iconColor,
                     size: 20,
                   ),
                 ),
@@ -467,13 +466,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Icon(
                   Icons.chevron_right,
-                  color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                 ),
               ],
             ),
           ),
         ),
-        const Divider(height: 1, color: Colors.black12),
+        Divider(height: 1, color: theme.dividerTheme.color),
       ],
     );
   }

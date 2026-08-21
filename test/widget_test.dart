@@ -10,12 +10,11 @@ void main() {
 
     // Verify initial header and safety pillar buttons
     expect(find.text('NyayaSathi AI'), findsOneWidget);
-    expect(find.text('Universal Safety Tools'), findsOneWidget);
+    expect(find.text('Core Safety Features'), findsOneWidget);
     expect(find.text('Legal Risk'), findsWidgets);
     expect(find.text('Bill & GST'), findsWidgets);
-    expect(find.text('Medicine'), findsWidgets);
-    expect(find.text('Food Safety'), findsWidgets);
     expect(find.text('Live Translate'), findsWidgets);
+    expect(find.text('Scanner Hub'), findsWidgets);
   });
 
   testWidgets('Sending a message in chat adds message to stream', (WidgetTester tester) async {

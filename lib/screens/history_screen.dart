@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 import '../services/scan_history_service.dart';
 import 'scanner/scan_history_screen.dart';
 
@@ -126,10 +127,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     child: Container(
                       height: 48,
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF22062C) : Colors.white,
+                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(24.0),
                         border: Border.all(
-                          color: isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF),
+                          color: theme.colorScheme.outlineVariant,
                           width: 1.0,
                         ),
                       ),
@@ -138,7 +139,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         children: [
                           Icon(
                             Icons.search,
-                            color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5),
+                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -151,7 +152,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               decoration: InputDecoration(
                                 hintText: 'Search...',
                                 hintStyle: TextStyle(
-                                  color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5),
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                                 ),
                                 border: InputBorder.none,
                               ),
@@ -169,10 +170,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF22062C) : Colors.white,
+                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF),
+                          color: theme.colorScheme.outlineVariant,
                           width: 1.0,
                         ),
                       ),
@@ -265,21 +266,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildHistoryCard(Map<String, dynamic> item) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.extension<AppColors>()!;
     final List<dynamic> tags = item['tags'] ?? [];
     final Color accentColor = item['color'] ?? theme.colorScheme.primary;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12.0),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF22062C) : Colors.white,
+        color: appColors.surfaceElevated,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? const Color(0xFF32113D) : const Color(0xFFE5EEFF),
-        ),
+        border: Border.all(color: appColors.surfaceBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -318,7 +317,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         Text(
                           item['time'],
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey,
+                            color: theme.colorScheme.onSurfaceVariant,
                             fontSize: 12,
                           ),
                         ),
@@ -338,7 +337,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           margin: const EdgeInsets.only(right: 8.0),
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: accentColor.withOpacity(0.1),
+                            color: accentColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
@@ -400,13 +399,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 height: 48,
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.colorScheme.primary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                  child: const Text('Apply Filter', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: const Text('Apply Filter', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
