@@ -241,6 +241,87 @@ class ClauseExtractionService {
             confidence: 0.92,
           ));
         }
+
+        // 10. MSME Mandatory 45-Day Rule & Interest Waiver Violation
+        else if (_hasAny(lower, [
+          'payment within 120 days', 'payment within 90 days', 'payment within 60 days',
+          'waives all statutory rights and claims under the msmed',
+          'no interest shall be payable by the purchaser for any delayed payment',
+          'interest claims under section 16 shall be enforceable',
+        ])) {
+          findings.add(LegalFinding(
+            id: 'clause_msme_${findingCounter++}',
+            clauseType: LegalClauseType.waiverOfRights,
+            severity: LegalRiskSeverity.high,
+            title: 'MSMED Act 45-Day Payment Rule & Interest Waiver Violation',
+            simpleExplanation:
+                'This agreement enforces payment delays exceeding 45 days or forces the supplier to waive statutory compound interest. Under Indian Law, MSME protections cannot be waived.',
+            legalExplanation:
+                'Section 15 of the MSMED Act, 2006 mandates payment within agreed terms not exceeding 45 days. Under Section 16, delayed payments attract 3x RBI bank rate compound interest, and any contractual waiver is void.',
+            rawExcerpt: text,
+            pageIndex: page.pageIndex,
+            boundingBox: line.boundingBox,
+            statutoryBasis: IndianActsDatabase.allProvisions
+                .where((p) => p.actName.contains('MSMED') || p.section.contains('15'))
+                .toList(),
+            recommendedAction:
+                'Insist on standard 30-to-45 day payment terms as mandated under Section 15 of the MSMED Act.',
+            confidence: 0.95,
+          ));
+        }
+
+        // 11. Builder-Buyer Advance Exceeding 10% & Delay Compensation Waiver (RERA)
+        else if (_hasAny(lower, [
+          'advance booking amount of rs', '25% of the total unit cost', '20% of the total',
+          'unconditional grace period of', 'zero liability to pay compensation or interest',
+          'alter layout plans, increase super built-up', 'waives the right to approach the real estate',
+        ])) {
+          findings.add(LegalFinding(
+            id: 'clause_rera_${findingCounter++}',
+            clauseType: LegalClauseType.hiddenFeesAndCostShifting,
+            severity: LegalRiskSeverity.high,
+            title: 'RERA Violation: Advance Exceeding 10% / Delay Immunity Trap',
+            simpleExplanation:
+                'The builder is demanding more than 10% advance without registered agreement or claiming indefinite grace periods without paying delay compensation.',
+            legalExplanation:
+                'Section 13 of RERA 2016 bars accepting >10% advance without registered agreement. Section 18 guarantees allottees monthly interest compensation (SBI MCLR+2%) or full refund for delays.',
+            rawExcerpt: text,
+            pageIndex: page.pageIndex,
+            boundingBox: line.boundingBox,
+            statutoryBasis: IndianActsDatabase.allProvisions
+                .where((p) => p.actName.contains('Real Estate') || p.section.contains('13') || p.section.contains('18'))
+                .toList(),
+            recommendedAction:
+                'Do not pay more than 10% prior to registered agreement, and ensure standard RERA delayed-possession compensation is incorporated.',
+            confidence: 0.94,
+          ));
+        }
+
+        // 12. Essential Services Cutoff (Model Tenancy Act)
+        else if (_hasAny(lower, [
+          'disconnect electricity, water', 'disconnect electricity', 'cut off water',
+          'disconnect essential', 'severance of essential services',
+        ])) {
+          findings.add(LegalFinding(
+            id: 'clause_essential_${findingCounter++}',
+            clauseType: LegalClauseType.unilateralTermination,
+            severity: LegalRiskSeverity.high,
+            title: 'Illegal Severance of Essential Utility Services',
+            simpleExplanation:
+                'The landlord or lessor threatens to cut off electricity, water, or elevator access during rent disputes.',
+            legalExplanation:
+                'Section 20 of the Model Tenancy Act, 2021 strictly prohibits landlords or managers from cutting off essential supplies. Doing so invites direct penalties from the Rent Court.',
+            rawExcerpt: text,
+            pageIndex: page.pageIndex,
+            boundingBox: line.boundingBox,
+            statutoryBasis: IndianActsDatabase.allProvisions
+                .where((p) => p.actName.contains('Tenancy') && (p.section.contains('20') || p.section.contains('21')))
+                .toList(),
+            recommendedAction:
+                'Remove this clause immediately; essential utility severance is unlawful under tenancy laws.',
+            confidence: 0.96,
+          ));
+        }
       }
     }
 

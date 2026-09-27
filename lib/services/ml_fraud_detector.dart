@@ -10,7 +10,6 @@ import 'government_source_service.dart';
 
 class MlFraudDetector {
   final GovernmentSourceService _govService;
-  final Random _rng = Random(42); // Deterministic seed for reproducibility
 
   MlFraudDetector(this._govService);
 
@@ -134,6 +133,7 @@ class MlFraudDetector {
             'This bill warrants closer inspection. '
             'Review each signal and verify with the establishment.',
         category: 'ML',
+        source: _govService.arithmeticSource,
       ));
     }
   }

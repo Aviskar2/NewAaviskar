@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../config/app_settings.dart';
 import '../theme/app_colors.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -18,6 +19,84 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String _userName = 'John Doe';
   String _userEmail = 'user@example.com';
+  String _apiKeyPreview = AppSettings.maskedApiKey;
+
+  void _editApiKey() {
+    final controller = TextEditingController(text: '');
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('AI Enhancement Key'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppSettings.hasApiKey
+                      ? 'Current key: $_apiKeyPreview'
+                      : 'No key configured. AI features run in offline mode.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'OpenRouter API key',
+                    hintText: 'sk-or-v1-...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Optional — unlocks AI vision bill audit and AI legal '
+                  'review. Get a free key at openrouter.ai. The app works '
+                  'fully offline without it. Stored only on this device.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            if (AppSettings.hasApiKey)
+              TextButton(
+                onPressed: () async {
+                  await AppSettings.setApiKey('');
+                  setState(() => _apiKeyPreview = AppSettings.maskedApiKey);
+                  if (mounted) Navigator.pop(context);
+                },
+                child: const Text('Remove'),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await AppSettings.setApiKey(controller.text);
+                setState(() => _apiKeyPreview = AppSettings.maskedApiKey);
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        AppSettings.hasApiKey
+                            ? 'AI enhancement enabled'
+                            : 'AI key cleared',
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   void _editProfile() {
     final controller = TextEditingController(text: _userName);
@@ -117,7 +196,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -266,6 +344,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: 'Language',
                     subtitle: 'English (US)',
                     onTap: () {},
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // AI Features Card (Teal Top Border)
+              _buildSectionCard(
+                title: 'AI Features',
+                stripeColor: const Color(0xFF009688),
+                children: [
+                  _buildSettingRow(
+                    icon: Icons.auto_awesome,
+                    iconBgColor: Colors.teal.shade50,
+                    iconColor: Colors.teal.shade600,
+                    title: 'AI Enhancement',
+                    subtitle:
+                        AppSettings.hasApiKey ? _apiKeyPreview : 'Offline mode',
+                    onTap: _editApiKey,
                   ),
                 ],
               ),

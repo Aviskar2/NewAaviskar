@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_translation/google_mlkit_translation.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
+import '../config/openrouter_models.dart';
 
 /// Supported app language definition
 class AppLanguage {
@@ -333,13 +334,29 @@ class TranslationService {
     String text, {
     required String fromCode,
     required String toCode,
+    int retryCount = 1,
   }) async {
-    // 1. Google GTX Public API
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return '';
+
+    // 1. Google GTX API via HTTP POST (robust against URL length limits)
     try {
-      final url = Uri.parse(
-        'https://translate.googleapis.com/translate_a/single?client=gtx&sl=$fromCode&tl=$toCode&dt=t&q=${Uri.encodeComponent(text)}',
-      );
-      final response = await http.get(url).timeout(const Duration(seconds: 8));
+      final url = Uri.parse('https://translate.googleapis.com/translate_a/single');
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'User-Agent': 'Mozilla/5.0',
+        },
+        body: {
+          'client': 'gtx',
+          'sl': fromCode,
+          'tl': toCode,
+          'dt': 't',
+          'q': trimmed,
+        },
+      ).timeout(const Duration(seconds: 12));
+
       if (response.statusCode == 200) {
         final dynamic data = jsonDecode(response.body);
         if (data is List && data.isNotEmpty && data[0] is List) {
@@ -349,12 +366,37 @@ class TranslationService {
               buffer.write(item[0].toString());
             }
           }
-          final res = buffer.toString();
+          final res = buffer.toString().trim();
           if (res.isNotEmpty) return res;
         }
       }
     } catch (e) {
-      debugPrint('Google GTX API error: $e');
+      debugPrint('Google GTX POST API error: $e');
+    }
+
+    // 1b. Google GTX API via GET fallback (for smaller chunks)
+    if (trimmed.length <= 1500) {
+      try {
+        final url = Uri.parse(
+          'https://translate.googleapis.com/translate_a/single?client=gtx&sl=$fromCode&tl=$toCode&dt=t&q=${Uri.encodeComponent(trimmed)}',
+        );
+        final response = await http.get(url).timeout(const Duration(seconds: 8));
+        if (response.statusCode == 200) {
+          final dynamic data = jsonDecode(response.body);
+          if (data is List && data.isNotEmpty && data[0] is List) {
+            final buffer = StringBuffer();
+            for (final item in (data[0] as List)) {
+              if (item is List && item.isNotEmpty && item[0] != null) {
+                buffer.write(item[0].toString());
+              }
+            }
+            final res = buffer.toString().trim();
+            if (res.isNotEmpty) return res;
+          }
+        }
+      } catch (e) {
+        debugPrint('Google GTX GET API error: $e');
+      }
     }
 
     // 2. MyMemory Translation API fallback
@@ -379,36 +421,39 @@ class TranslationService {
 
     // 3. OpenRouter Free LLM Fallback
     try {
-      if (ApiConfig.openRouterApiKey.isNotEmpty &&
-          !ApiConfig.openRouterApiKey.contains('<YOUR_')) {
-        final uri = Uri.parse('${ApiConfig.openRouterBaseUrl}/chat/completions');
-        final response = await http.post(
-          uri,
-          headers: {
-            'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
-            'HTTP-Referer': ApiConfig.appSiteUrl,
-            'X-Title': ApiConfig.appName,
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'model': 'google/gemini-2.0-flash-exp:free',
-            'temperature': 0.1,
-            'messages': [
-              {
-                'role': 'system',
-                'content':
-                    'Translate the following text accurately into the language code "$toCode". Return ONLY the translated string with no explanations or notes.',
-              },
-              {'role': 'user', 'content': text},
-            ],
-          }),
-        ).timeout(const Duration(seconds: 8));
+      if (ApiConfig.aiActive) {
+        final candidates = await OpenRouterModelDirectory.textCandidates();
+        for (final model in candidates.take(3)) {
+          final uri = Uri.parse('${ApiConfig.openRouterBaseUrl}/chat/completions');
+          final response = await http.post(
+            uri,
+            headers: {
+              'Authorization': 'Bearer ${ApiConfig.effectiveApiKey}',
+              'HTTP-Referer': ApiConfig.appSiteUrl,
+              'X-Title': ApiConfig.appName,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': model,
+              'temperature': 0.1,
+              'messages': [
+                {
+                  'role': 'system',
+                  'content':
+                      'Translate the following text accurately into the language code "$toCode". Return ONLY the translated string with no explanations or notes.',
+                },
+                {'role': 'user', 'content': text},
+              ],
+            }),
+          ).timeout(const Duration(seconds: 8));
 
-        if (response.statusCode == 200) {
-          final decoded = jsonDecode(response.body);
-          final translated = decoded['choices']?[0]?['message']?['content']?.toString().trim();
-          if (translated != null && translated.isNotEmpty) {
-            return translated;
+          if (response.statusCode == 200) {
+            final decoded = jsonDecode(response.body);
+            final translated =
+                decoded['choices']?[0]?['message']?['content']?.toString().trim();
+            if (translated != null && translated.isNotEmpty) {
+              return translated;
+            }
           }
         }
       }

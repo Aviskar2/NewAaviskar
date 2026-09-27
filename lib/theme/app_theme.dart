@@ -175,9 +175,14 @@ class AppTheme {
       chipTheme: ChipThemeData(
         backgroundColor: const Color(0xFFF1F5F9),
         selectedColor: const Color(0xFF2563EB),
-        labelStyle: const TextStyle(fontFamily: 'Inter', fontSize: 12, fontWeight: FontWeight.w500),
+        labelStyle: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF0F172A),
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        side: BorderSide.none,
+        side: const BorderSide(color: Color(0xFFCBD5E1)),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       ),
       dividerTheme: const DividerThemeData(
@@ -362,9 +367,14 @@ class AppTheme {
       chipTheme: ChipThemeData(
         backgroundColor: const Color(0xFF1E0C2B),
         selectedColor: const Color(0xFFA78BFA),
-        labelStyle: const TextStyle(fontFamily: 'Inter', fontSize: 12, fontWeight: FontWeight.w500),
+        labelStyle: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFFF8FAFC),
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        side: const BorderSide(color: Color(0xFF2A1040)),
+        side: const BorderSide(color: Color(0xFF381552)),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       ),
       dividerTheme: const DividerThemeData(

@@ -56,6 +56,36 @@ class StatutoryCitation {
     this.isEnforceableInIndia = true,
   });
 
+  bool get isModernLaw {
+    final lower = actName.toLowerCase();
+    return lower.contains('2024') ||
+        lower.contains('2023') ||
+        lower.contains('2021') ||
+        lower.contains('2019') ||
+        lower.contains('2016') ||
+        lower.contains('bharatiya') ||
+        lower.contains('model tenancy') ||
+        lower.contains('data protection');
+  }
+
+  String get statusBadgeText {
+    final lower = actName.toLowerCase();
+    if (lower.contains('bharatiya') || lower.contains('2024') || lower.contains('2023')) {
+      return '⚡ Active 2024 Law in Force';
+    } else if (lower.contains('model tenancy') || lower.contains('2021')) {
+      return '🏛️ Modern Tenancy Standard';
+    } else if (lower.contains('consumer protection') || lower.contains('2019')) {
+      return '⚖️ Active Consumer Standard';
+    } else if (lower.contains('rera') || lower.contains('2016')) {
+      return '🏢 Active RERA Mandate';
+    } else if (lower.contains('arbitration')) {
+      return '⚖️ Active Arbitration Standard (2015/2019)';
+    } else if (lower.contains('contract')) {
+      return '📜 Substantive Law (In Force)';
+    }
+    return '📜 Enforceable Indian Statute';
+  }
+
   Map<String, dynamic> toJson() => {
     'actName': actName,
     'section': section,
@@ -64,6 +94,15 @@ class StatutoryCitation {
     'officialSourceUrl': officialSourceUrl,
     'isEnforceableInIndia': isEnforceableInIndia,
   };
+
+  factory StatutoryCitation.fromJson(Map<String, dynamic> json) => StatutoryCitation(
+    actName: json['actName'] as String? ?? 'Indian Statute',
+    section: json['section'] as String? ?? '',
+    title: json['title'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    officialSourceUrl: json['officialSourceUrl'] as String?,
+    isEnforceableInIndia: json['isEnforceableInIndia'] as bool? ?? true,
+  );
 }
 
 /// A structured finding representing a dangerous or noteworthy clause detected in the document.
@@ -80,6 +119,9 @@ class LegalFinding {
   final List<StatutoryCitation> statutoryBasis;
   final String recommendedAction;
   final double confidence;
+
+  /// Returns the primary/latest active running statute this finding is compared against
+  StatutoryCitation? get primaryStatute => statutoryBasis.isNotEmpty ? statutoryBasis.first : null;
 
   const LegalFinding({
     required this.id,

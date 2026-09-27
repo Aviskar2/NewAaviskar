@@ -1,4 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:aura_ai/core/legal/constants/indian_acts_database.dart';
+import 'package:aura_ai/core/legal/constants/sample_legal_documents.dart';
+import 'package:aura_ai/widgets/legal_analyzer/highlighted_document_paper.dart';
 import 'package:aura_ai/core/legal/models/legal_clause.dart';
 import 'package:aura_ai/core/legal/models/legal_document_type.dart';
 import 'package:aura_ai/core/legal/models/legal_finding.dart';
@@ -8,8 +13,10 @@ import 'package:aura_ai/services/legal/indian_law_rag_service.dart';
 import 'package:aura_ai/services/legal/legal_document_classifier.dart';
 import 'package:aura_ai/services/legal/legal_orchestrator.dart';
 import 'package:aura_ai/services/legal/legal_risk_engine.dart';
+import 'package:aura_ai/services/legal/live_legal_update_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late LegalDocumentClassifier classifier;
   late ClauseExtractionService clauseService;
   late DocumentAnomalyService anomalyService;
@@ -18,6 +25,7 @@ void main() {
   late LegalOrchestrator orchestrator;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     classifier = LegalDocumentClassifier();
     clauseService = ClauseExtractionService();
     anomalyService = DocumentAnomalyService();
@@ -185,6 +193,142 @@ Between Rajesh (Lessor) and Suresh (Lessee).
       expect(result.overallSeverity, LegalRiskSeverity.high);
       expect(result.plainSummary.isNotEmpty, isTrue);
       expect(result.executiveLegalSummary.isNotEmpty, isTrue);
+    });
+
+    test('Registers new dynamic statutory laws and retrieves them in RAG', () {
+      const newStatute = StatutoryCitation(
+        actName: 'Telecommunications Act, 2023',
+        section: 'Section 19',
+        title: 'Protection of Telecommunication Identifiers',
+        description: 'Statutory framework governing biometric verification and SIM identification.',
+        officialSourceUrl: 'https://www.indiacode.nic.in/handle/123456789/21809',
+        isEnforceableInIndia: true,
+      );
+
+      // Register new dynamic statute
+      IndianActsDatabase.registerDynamicProvision(newStatute);
+
+      // Verify it is part of allProvisions
+      expect(IndianActsDatabase.allProvisions.any((p) => p.actName == 'Telecommunications Act, 2023'), isTrue);
+
+      // Verify RAG retrieves it
+      final retrieved = ragService.retrieveProvisions('Telecommunications');
+      expect(retrieved.any((p) => p.section == 'Section 19'), isTrue);
+    });
+
+    test('Full Audit: Analyzes highRiskRentalAgreement and flags critical predatory clauses', () async {
+      final doc = orchestrator.createDocumentFromText(SampleLegalDocuments.highRiskRentalAgreement);
+      final result = await orchestrator.analyze(doc, enableAiEnhancement: false);
+
+      // Verify classification
+      expect(result.documentType, LegalDocumentType.rentalAgreement);
+
+      // Verify overall high risk
+      expect(result.overallSeverity, LegalRiskSeverity.high);
+      expect(result.overallRiskScore, greaterThanOrEqualTo(85.0));
+
+      // Check specific predatory clauses flagged
+      final clauseTypes = result.findings.map((f) => f.clauseType).toSet();
+      expect(clauseTypes.contains(LegalClauseType.securityDepositForfeiture), isTrue,
+          reason: 'Should flag arbitrary 10-month deposit forfeiture');
+      expect(clauseTypes.contains(LegalClauseType.unilateralTermination), isTrue,
+          reason: 'Should flag unilateral termination without notice');
+      expect(clauseTypes.contains(LegalClauseType.restraintOfLegalRecourse), isTrue,
+          reason: 'Should flag void court restraint under Sec 28');
+      expect(clauseTypes.contains(LegalClauseType.nonCompeteRestraint), isTrue,
+          reason: 'Should flag void non-compete restraint under Sec 27');
+      expect(clauseTypes.contains(LegalClauseType.penaltyAndDamages), isTrue,
+          reason: 'Should flag disproportionate penalties');
+      expect(clauseTypes.contains(LegalClauseType.unlimitedIndemnity), isTrue,
+          reason: 'Should flag unlimited indemnity');
+
+      // Verify each finding has an official Indian statutory citation
+      for (final finding in result.findings) {
+        expect(finding.statutoryBasis.isNotEmpty, isTrue,
+            reason: 'Every finding must have at least one statutory citation');
+        expect(finding.simpleExplanation.isNotEmpty, isTrue);
+        expect(finding.recommendedAction.isNotEmpty, isTrue);
+      }
+    });
+
+    test('Full Audit: Analyzes highRiskEmploymentBond and flags upfront fee scam & 3-yr non-compete', () async {
+      final doc = orchestrator.createDocumentFromText(SampleLegalDocuments.highRiskEmploymentBond);
+      final result = await orchestrator.analyze(doc, enableAiEnhancement: false);
+
+      expect(result.overallSeverity, LegalRiskSeverity.high);
+      final clauseTypes = result.findings.map((f) => f.clauseType).toSet();
+      expect(clauseTypes.contains(LegalClauseType.upfrontFeeScam), isTrue,
+          reason: 'Should flag upfront registration fee scam trap');
+      expect(clauseTypes.contains(LegalClauseType.nonCompeteRestraint), isTrue,
+          reason: 'Should flag 3-year non-compete bond');
+      expect(clauseTypes.contains(LegalClauseType.restraintOfLegalRecourse), isTrue,
+          reason: 'Should flag waiver of labour and consumer court recourse');
+    });
+
+    testWidgets('HighlightedDocumentPaper renders and marks flagged clauses with tap interaction', (tester) async {
+      final doc = orchestrator.createDocumentFromText(SampleLegalDocuments.highRiskRentalAgreement);
+      final result = await orchestrator.analyze(doc, enableAiEnhancement: false);
+
+      LegalFinding? tappedFinding;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HighlightedDocumentPaper(
+              rawText: doc.rawText,
+              findings: result.findings,
+              onFindingTap: (finding) {
+                tappedFinding = finding;
+              },
+            ),
+          ),
+        ),
+      );
+
+      // Verify legend bar displays count of flagged clauses
+      expect(find.textContaining('Flagged Clauses Highlighted in Paper'), findsOneWidget);
+
+      // Verify risk alert labels are rendered
+      expect(find.text('RISK ALERT'), findsWidgets);
+
+      // Verify tapping a highlighted clause triggers callback
+      await tester.tap(find.text('RISK ALERT').first);
+      await tester.pump();
+
+      expect(tappedFinding, isNotNull);
+    });
+
+    test('Classifies Builder-Buyer, Commercial Lease, and Vendor MSME Agreements accurately', () {
+      final bbaResult = classifier.classify(SampleLegalDocuments.highRiskBuilderBuyerAgreement);
+      expect(bbaResult.type, LegalDocumentType.builderBuyerAgreement);
+      expect(bbaResult.type.displayName, contains('Builder-Buyer'));
+
+      final leaseResult = classifier.classify(SampleLegalDocuments.highRiskCommercialLease);
+      expect(leaseResult.type, LegalDocumentType.commercialLeaseAgreement);
+
+      final vendorResult = classifier.classify(SampleLegalDocuments.highRiskVendorSupplyAgreement);
+      expect(vendorResult.type, LegalDocumentType.vendorSupplyAgreement);
+    });
+
+    test('Full Audit: Analyzes highRiskBuilderBuyerAgreement and flags RERA Sec 13 & 18 violations', () async {
+      final doc = orchestrator.createDocumentFromText(SampleLegalDocuments.highRiskBuilderBuyerAgreement);
+      final result = await orchestrator.analyze(doc, enableAiEnhancement: false);
+
+      expect(result.overallSeverity, LegalRiskSeverity.high);
+      expect(result.documentType, LegalDocumentType.builderBuyerAgreement);
+      final hasReraViolation = result.findings.any((f) =>
+          f.statutoryBasis.any((b) => b.actName.contains('Real Estate') || b.section.contains('13') || b.section.contains('18')));
+      expect(hasReraViolation, isTrue, reason: 'Must detect RERA 10% advance or delayed possession violation');
+    });
+
+    test('Live Legal Sync: syncLatestIndianLawsFromOfficialSources updates statutory database and emits LiveSyncReport', () async {
+      final liveService = LiveLegalUpdateService();
+      final report = await liveService.syncLatestIndianLawsFromOfficialSources(force: true);
+
+      expect(report.isSuccess, isTrue);
+      expect(report.totalProvisionsCount, greaterThanOrEqualTo(20));
+      expect(report.sourceDescription, contains('Official Gazette of India'));
+      expect(liveService.syncStatusNotifier.value, isNotNull);
     });
   });
 }

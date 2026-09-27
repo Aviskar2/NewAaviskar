@@ -154,58 +154,163 @@ class LegalFindingDetailSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // Indian Statutes
+                // Indian Statutes & Section Comparison
                 if (finding.statutoryBasis.isNotEmpty) ...[
-                  Text(
-                    'APPLICABLE INDIAN STATUTES',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF9D00FF),
-                    ),
+                  Row(
+                    children: const [
+                      Icon(Icons.balance_rounded, size: 16, color: Color(0xFF1E40AF)),
+                      SizedBox(width: 6),
+                      Text(
+                        'STATUTORY COMPARISON (WHICH SECTION OF LAW)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1E40AF),
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   ...finding.statutoryBasis.map((s) => Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF9D00FF).withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFF9D00FF).withValues(alpha: 0.2)),
+                      color: const Color(0xFF2563EB).withValues(alpha: isDark ? 0.12 : 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.25)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Expanded(
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: s.isModernLaw
+                                    ? const Color(0xFF16A34A).withValues(alpha: 0.15)
+                                    : const Color(0xFF2563EB).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
                               child: Text(
-                                '${s.actName} — ${s.section}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                  color: Color(0xFF9D00FF),
+                                s.statusBadgeText,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: s.isModernLaw ? const Color(0xFF15803D) : const Color(0xFF1E40AF),
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const Spacer(),
                             if (s.officialSourceUrl != null)
                               InkWell(
                                 onTap: () => UrlLauncherUtil.launch(s.officialSourceUrl!),
-                                child: const Text(
-                                  'India Code ↗',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF2563EB),
-                                    fontWeight: FontWeight.w600,
-                                    decoration: TextDecoration.underline,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(2.0),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Text(
+                                        'India Code Source',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF2563EB),
+                                          fontWeight: FontWeight.w700,
+                                          decoration: TextDecoration.underline,
+                                        ),
+                                      ),
+                                      SizedBox(width: 2),
+                                      Icon(Icons.open_in_new_rounded, size: 12, color: Color(0xFF2563EB)),
+                                    ],
                                   ),
                                 ),
                               ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        Text(s.description, style: theme.textTheme.bodySmall),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${s.actName} — ${s.section}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Color(0xFF1E40AF),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          s.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // DIRECT SIDE-BY-SIDE STATUTORY COMPARISON
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 1. Clause in Document
+                              Row(
+                                children: const [
+                                  Icon(Icons.description_outlined, size: 13, color: Color(0xFFDC2626)),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'DOCUMENT CLAUSE STATEMENT:',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFFDC2626)),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '"${finding.rawExcerpt}"',
+                                style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Divider / VS
+                              Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                    '⚖️ COMPARED AGAINST ACTIVE INDIAN LAW MANDATE ⚖️',
+                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+
+                              // 2. What Indian Law Mandates
+                              Row(
+                                children: const [
+                                  Icon(Icons.gavel_rounded, size: 13, color: Color(0xFF15803D)),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'WHAT THE LAW ENFORCES IN INDIA:',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                s.description,
+                                style: theme.textTheme.bodySmall?.copyWith(fontSize: 12, height: 1.35),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   )),

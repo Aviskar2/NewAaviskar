@@ -215,16 +215,30 @@ class _OcrScreenState extends State<OcrScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        'Printed text', 'Handwriting', 'Hindi/Marathi',
-                        'Receipts', 'Signs', 'IDs'
+                        'Printed Text', 'Handwriting', 'Documents',
+                        'Receipts', 'Signs', 'Official IDs'
                       ]
-                          .map((t) => Chip(
-                                label: Text(t,
-                                    style:
-                                        const TextStyle(fontSize: 12)),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8),
-                              ))
+                          .map((t) {
+                            final isDark = Theme.of(context).brightness == Brightness.dark;
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF1E0C2B) : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isDark ? const Color(0xFF381552) : const Color(0xFFCBD5E1),
+                                ),
+                              ),
+                              child: Text(
+                                t,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                ),
+                              ),
+                            );
+                          })
                           .toList(),
                     ),
                     const SizedBox(height: 28),

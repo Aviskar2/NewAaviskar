@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../config/openrouter_models.dart';
 import '../../core/legal/models/document_anomaly.dart';
 import '../../core/legal/models/legal_clause.dart';
 import '../../core/legal/models/legal_document_type.dart';
 import '../../core/legal/models/legal_finding.dart';
+import '../gemini_fraud_service.dart';
 
 class AiLegalEnhancement {
   final String plainLanguageSummary;
@@ -45,25 +47,34 @@ class LocalLegalLlmService {
     if (preferLocalOllama) {
       try {
         final ollamaResult = await _callOllama(rawText, docType)
-            .timeout(const Duration(seconds: 5));
+            .timeout(const Duration(seconds: 3));
         if (ollamaResult != null) return ollamaResult;
       } catch (e) {
         debugPrint('Ollama local LLM unavailable: $e. Falling back...');
       }
     }
 
-    // 2. Try OpenRouter Cloud AI using active key
-    if (ApiConfig.openRouterApiKey.isNotEmpty &&
-        !ApiConfig.openRouterApiKey.contains('<YOUR_')) {
-      final candidates = [
-        'google/gemini-2.0-flash-exp:free',
-        'google/gemini-2.0-flash:free',
-        'meta-llama/llama-3.3-70b-instruct:free',
-      ];
+    // 2. Try Google Gemini AI for deep legal fraud & risk analysis
+    if (ApiConfig.geminiActive) {
+      try {
+        final geminiService = GeminiFraudService();
+        final geminiResult = await geminiService.analyzeLegalDocumentForFraud(
+          rawText: rawText,
+          docType: docType,
+        );
+        if (geminiResult != null) return geminiResult;
+      } catch (e) {
+        debugPrint('Gemini legal fraud analysis error: $e. Falling back to secondary models...');
+      }
+    }
+
+    // 3. Try OpenRouter Cloud AI using active key
+    if (ApiConfig.aiActive) {
+      final candidates = await OpenRouterModelDirectory.textCandidates();
       try {
         return await _tryCandidates(candidates, rawText, docType)
-            .timeout(const Duration(seconds: 6), onTimeout: () {
-          debugPrint('Legal LLM enhancement timed out (6s). Proceeding with deterministic rules.');
+            .timeout(const Duration(seconds: 8), onTimeout: () {
+          debugPrint('Legal LLM enhancement timed out (8s). Proceeding with deterministic rules.');
           return null;
         });
       } catch (e) {
@@ -79,7 +90,14 @@ class LocalLegalLlmService {
     String rawText,
     LegalDocumentType docType,
   ) async {
+    int attempt = 0;
     for (final model in candidates) {
+      if (attempt > 0) {
+        // Exponential backoff to avoid OpenRouter 429 rate limit bursts
+        final backoffMs = (400 * (1 << (attempt - 1))).clamp(400, 1500);
+        await Future.delayed(Duration(milliseconds: backoffMs));
+      }
+      attempt++;
       try {
         final result = await _callOpenRouter(model, rawText, docType)
             .timeout(const Duration(seconds: 4));
@@ -98,7 +116,16 @@ class LocalLegalLlmService {
   ) async {
     final systemPrompt = '''
 You are an expert Indian Legal Document & Contract Risk Auditor.
-Analyze the provided document under applicable Indian Laws (Indian Contract Act 1872, Consumer Protection Act 2019, Model Tenancy Act, RERA 2016, IT Act 2000, Specific Relief Act).
+Analyze the provided document strictly under currently applicable and active Indian Laws:
+- Bharatiya Nyaya Sanhita, 2023 (BNS) [in active force from July 1, 2024 - replaces IPC for cheating, fraud, breach of trust, forgery]
+- Bharatiya Sakshya Adhiniyam, 2023 (BSA) [replaces Indian Evidence Act for electronic contracts and digital signatures]
+- Digital Personal Data Protection Act, 2023 (DPDP Act) [consent requirements & corporate data obligations]
+- Model Tenancy Act, 2021 & State Tenancy Laws [security deposit ceiling of 2 months for residential, essential service protections]
+- Real Estate (Regulation and Development) Act, 2016 (RERA) [max 10% advance without registered agreement, delay compensation]
+- Registration Act, 1908 & Transfer of Property Act, 1882 [mandatory registration for leases >11 months, statutory notice]
+- Consumer Protection Act, 2019 [unfair contract terms and unfair trade practices]
+- Arbitration & Conciliation Act, 1996 [unilateral sole arbitrator appointments are illegal under Supreme Court rulings]
+- Indian Contract Act, 1872 [Section 27 non-compete void, Section 28 restraint of legal proceedings void, Section 74 penalty limits]
 
 Document Type: ${docType.displayName}
 
@@ -144,22 +171,37 @@ Respond strictly with ONLY valid raw JSON in this schema (no markdown fences, no
     final response = await http.post(
       uri,
       headers: {
-        'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
+        'Authorization': 'Bearer ${ApiConfig.effectiveApiKey}',
         'HTTP-Referer': ApiConfig.appSiteUrl,
         'X-Title': ApiConfig.appName,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
       },
-      body: jsonEncode({
+      body: utf8.encode(jsonEncode({
         'model': model,
         'temperature': 0.1,
         'messages': [
-          {'role': 'system', 'content': systemPrompt},
-          {'role': 'user', 'content': 'Here is the scanned legal document text:\n\n$rawText'},
+          {
+            'role': 'system',
+            'content': systemPrompt.replaceAll('\u00A0', ' ')
+          },
+          {
+            'role': 'user',
+            'content':
+                'Here is the scanned legal document text:\n\n${rawText.replaceAll('\u00A0', ' ')}'
+          },
         ],
-      }),
+      }).replaceAll('\u00A0', ' ')),
     ).timeout(const Duration(seconds: 4));
 
-    if (response.statusCode != 200) return null;
+    if (response.statusCode != 200) {
+      debugPrint('OpenRouter ${response.statusCode} for $model');
+      if (response.statusCode == 403 || response.statusCode == 404) {
+        OpenRouterModelDirectory.blockModel(model);
+      } else if (response.statusCode == 429) {
+        OpenRouterModelDirectory.coolDown(model);
+      }
+      return null;
+    }
 
     final decoded = jsonDecode(response.body);
     final content = decoded['choices']?[0]?['message']?['content']?.toString();
@@ -188,7 +230,7 @@ Respond strictly with ONLY valid raw JSON in this schema (no markdown fences, no
         'stream': false,
         'format': 'json',
       }),
-    ).timeout(const Duration(seconds: 4));
+    ).timeout(const Duration(seconds: 3));
 
     if (response.statusCode != 200) return null;
     final decoded = jsonDecode(response.body);

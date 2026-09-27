@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aura_ai/main.dart';
 
@@ -10,7 +9,7 @@ void main() {
 
     // Verify initial header and safety pillar buttons
     expect(find.text('NyayaSathi AI'), findsOneWidget);
-    expect(find.text('Core Safety Features'), findsOneWidget);
+    expect(find.text('Features'), findsOneWidget);
     expect(find.text('Legal Risk'), findsWidgets);
     expect(find.text('Bill & GST'), findsWidgets);
     expect(find.text('Live Translate'), findsWidgets);

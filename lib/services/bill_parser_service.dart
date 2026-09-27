@@ -916,10 +916,35 @@ class BillParserService {
     );
     final all = p.allMatches(raw).toList();
     if (all.isEmpty) return null;
-    // If multiple rates exist (multi-slab), return null (we don't know which applies)
-    final rates = all.map((m) => double.tryParse(m.group(1) ?? '')).whereType<double>().toSet();
-    if (rates.length == 1) return rates.first;
-    return null; // Multiple rates — don't report a single rate
+
+    final rawRates = all.map((m) => double.tryParse(m.group(1) ?? '')).whereType<double>().toSet();
+    if (rawRates.isEmpty) return null;
+
+    // Snap to standard Indian GST slabs: 0, 0.25, 0.5, 1, 1.5, 3, 5, 6, 9, 12, 14, 18, 28
+    const standardSlabs = [0.0, 0.25, 0.5, 1.0, 1.5, 3.0, 5.0, 6.0, 9.0, 12.0, 14.0, 18.0, 28.0];
+    final snappedRates = <double>{};
+    for (final r in rawRates) {
+      // Find closest standard slab
+      double best = r;
+      double bestDist = 999;
+      for (final slab in standardSlabs) {
+        final dist = (r - slab).abs();
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = slab;
+        }
+      }
+      // Only snap if within 0.6% of a standard slab (handles OCR errors like 2.58 -> 2.5)
+      if (bestDist <= 0.6) {
+        snappedRates.add(best);
+      } else {
+        snappedRates.add(r);
+      }
+    }
+
+    if (snappedRates.length == 1) return snappedRates.first;
+    // Multiple rates — return null (multi-slab)
+    return null;
   }
 
   // ─── Charge extraction ─────────────────────────────────────────────────────

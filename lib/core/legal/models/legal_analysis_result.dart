@@ -1,6 +1,4 @@
-import 'dart:ui';
 import 'document_anomaly.dart';
-import 'legal_clause.dart';
 import 'legal_document_type.dart';
 import 'legal_finding.dart';
 import 'ocr_document.dart';

@@ -1,22 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
-import '../theme/app_colors.dart';
 import 'home_dashboard_screen.dart';
 import 'history_screen.dart';
 import 'updates_screen.dart';
 import 'settings_screen.dart';
-import 'scanner/ocr_screen.dart';
 import 'scanner/scanner_hub_screen.dart';
+import 'scanner/universal_product_entry_screen.dart';
 import 'bill_analyzer/bill_analyzer_entry_screen.dart';
 import 'legal_analyzer/legal_analyzer_entry_screen.dart';
-import 'medicine_safety/medicine_entry_screen.dart';
-import 'product_safety/product_safety_entry_screen.dart';
 import '../services/ocr_service.dart';
 import '../services/scan_history_service.dart';
-import '../services/bill_analysis_orchestrator.dart';
-import '../models/analysis_result.dart';
 
 import '../widgets/translation_mode_sheet.dart';
 
@@ -100,12 +93,13 @@ class MainNavigationState extends State<MainNavigation> {
     // Welcoming greeting message introducing NyayaSathi AI and its core safety features
     activeMessages.add({
       'isUser': false,
-      'text': 'Namaste! I am NyayaSathi AI 🇮🇳 — your Citizen Legal, Financial & Consumer Safety Assistant.\n\n'
+      'text': 'Namaste! I am NyayaSathi AI \u{1F1EE}\u{1F1F3} — your Citizen Legal, Financial & Consumer Safety Assistant.\n\n'
           'Here is what I can do for you:\n'
-          '• ⚖️ Legal Risk: Scan rental agreements, loans & contracts for scam clauses & unfair terms\n'
-          '• 🧾 Bill & GST: Audit restaurant & grocery bills for illegal service charges & tax errors\n'
-          '• 🌐 Live Translate: Translate documents & photos across 12+ Indian languages\n'
-          '• 🔍 Scanner Hub: QR & barcodes, Jan Aushadhi medicine savings & FSSAI food safety\n\n'
+          '• \u2696\uFE0F Legal Risk: Scan rental agreements, loans & contracts for scam clauses & unfair terms\n'
+          '• \u{1F9FE} Bill & GST: Audit restaurant & grocery bills for illegal service charges & tax errors\n'
+          '• \u{1F310} Live Translate: Translate documents & photos across 12+ Indian languages\n'
+          '• \u{1F50D} Scanner Hub: QR & barcodes, Jan Aushadhi medicine savings & FSSAI food safety\n'
+          '• \u{1F3DB}\uFE0F Govt Schemes: Discover 30+ government schemes matched to your profile\n\n'
           'Tap any tool above or ask me any consumer protection question below!',
       'type': 'text',
     });
@@ -361,12 +355,11 @@ class MainNavigationState extends State<MainNavigation> {
         feature == 'Medicine Safety' ||
         feature == 'Pharma' ||
         feature == 'Jan Aushadhi') {
-      // Open Medicine Safety Screen directly
       final context = this.context;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => MedicineEntryScreen(
+          builder: (_) => UniversalProductEntryScreen(
             ocrService: _ocrService,
             historyService: _scanHistoryService,
           ),
@@ -380,12 +373,11 @@ class MainNavigationState extends State<MainNavigation> {
         feature == 'Product' ||
         feature == 'Food' ||
         feature == 'FSSAI') {
-      // Open Product & Food Safety Screen directly
       final context = this.context;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => ProductSafetyEntryScreen(
+          builder: (_) => UniversalProductEntryScreen(
             ocrService: _ocrService,
             historyService: _scanHistoryService,
           ),
@@ -459,208 +451,9 @@ class MainNavigationState extends State<MainNavigation> {
     });
   }
 
-  // ─── Bill Analyzer Inline Flow ──────────────────────────────────────────
-
-  void _showBillAnalyzerPicker() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        final theme = Theme.of(ctx);
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: theme.dividerColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Scan Bill',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Take a photo or pick from gallery',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _billPickerOption(
-                        ctx,
-                        icon: Icons.camera_alt_rounded,
-                        label: 'Camera',
-                        onTap: () => Navigator.pop(ctx, ImageSource.camera),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _billPickerOption(
-                        ctx,
-                        icon: Icons.photo_library_rounded,
-                        label: 'Gallery',
-                        onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-              ],
-            ),
-          ),
-        );
-      },
-    ).then((source) {
-      if (source != null && source is ImageSource) {
-        _processBillInline(source);
-      }
-    });
-  }
-
-  Widget _billPickerOption(BuildContext ctx, {required IconData icon, required String label, required VoidCallback onTap}) {
-    final theme = Theme.of(ctx);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 28, color: theme.colorScheme.primary),
-            const SizedBox(height: 8),
-            Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.primary)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _processBillInline(ImageSource source) async {
-    // Add user message
-    setState(() {
-      activeMessages.add({
-        'isUser': true,
-        'type': 'upload',
-        'document': {'name': source == ImageSource.camera ? 'Bill (Camera)' : 'Bill (Gallery)'},
-        'feature': 'Bill Analyzer',
-      });
-      isTyping = true;
-      typingStatus = 'Scanning bill...';
-    });
-
-    try {
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: source, imageQuality: 85);
-      if (pickedFile == null) {
-        setState(() {
-          isTyping = false;
-          typingStatus = null;
-          activeMessages.add({
-            'isUser': false,
-            'type': 'text',
-            'text': 'No image selected. Please try again.',
-          });
-        });
-        return;
-      }
-
-      // Update status
-      setState(() {
-        typingStatus = 'Reading text with OCR...';
-      });
-
-      // Run OCR
-      final ocrResult = await _ocrService.recognizeFromPath(pickedFile.path);
-
-      if (ocrResult.isEmpty) {
-        setState(() {
-          isTyping = false;
-          typingStatus = null;
-          activeMessages.add({
-            'isUser': false,
-            'type': 'text',
-            'text': 'Could not read any text from the bill. Please try a clearer image.',
-          });
-        });
-        return;
-      }
-
-      // Update status
-      setState(() {
-        typingStatus = 'Analyzing GST, charges & fraud patterns...';
-      });
-
-      // Run bill analysis
-      final orchestrator = BillAnalysisOrchestrator();
-      final result = await orchestrator.analyze(
-        ocrResult.fullText,
-        imagePath: pickedFile.path,
-      );
-
-      // Save to history
-      _saveSessionToHistory('Bill: ${result.bill.sellerName ?? "Unknown"}', result.overallLabel);
-
-      // Inject result into chat
-      setState(() {
-        isTyping = false;
-        typingStatus = null;
-        activeMessages.add({
-          'isUser': false,
-          'type': 'bill_analysis_result',
-          'billResult': result,
-          'imagePath': pickedFile.path,
-          'text': _buildBillSummaryText(result),
-        });
-      });
-    } catch (e) {
-      setState(() {
-        isTyping = false;
-        typingStatus = null;
-        activeMessages.add({
-          'isUser': false,
-          'type': 'text',
-          'text': 'Analysis failed: ${e.toString()}. Please try again.',
-        });
-      });
-    }
-  }
-
-  String _buildBillSummaryText(BillAnalysisResult result) {
-    final buf = StringBuffer();
-    buf.write('Bill analyzed');
-    if (result.bill.sellerName != null) buf.write(' from ${result.bill.sellerName}');
-    buf.write('. ${result.overallEmoji} ${result.overallLabel}.');
-    if (result.potentialExcess != null && result.potentialExcess! > 0) {
-      buf.write(' Potential excess of ₹${result.potentialExcess!.toStringAsFixed(2)} detected.');
-    }
-    final critical = result.errorFindings.length + result.suspiciousFindings.length;
-    if (critical > 0) {
-      buf.write(' $critical critical issue(s) found.');
-    }
-    return buf.toString();
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     // Screens corresponding to each tab index
     final List<Widget> screens = [

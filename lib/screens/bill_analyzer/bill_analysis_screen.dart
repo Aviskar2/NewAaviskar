@@ -54,7 +54,6 @@ class _BillAnalysisScreenState extends State<BillAnalysisScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final r = widget.result;
     final color = _overallColor(context);
 
@@ -534,6 +533,9 @@ class _SummaryTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Quick Verdict Card — most important info first
+        _QuickVerdictCard(result: r, appColors: appColors, theme: theme),
+
         // Image thumbnail
         if (imagePath != null && File(imagePath!).existsSync())
           _SectionCard(
@@ -564,22 +566,22 @@ class _SummaryTab extends StatelessWidget {
 
         // Financial summary
         _SectionCard(
-          title: '💰 Financial Summary',
+          title: '💰 Bill Ka Pura Hisab',
           child: Column(
             children: [
               if (r.bill.itemsGrossTotal > 0)
                 _SummaryRow(
-                  'Gross Items Total',
+                  'Saamaan Ki Kimat',
                   '₹${r.bill.itemsGrossTotal.toStringAsFixed(2)}',
                 ),
               if (r.bill.totalDiscountAmount > 0)
                 _SummaryRow(
-                  'Discounts / Savings',
+                  'Discount / Bachat',
                   '-₹${r.bill.totalDiscountAmount.toStringAsFixed(2)}',
                   color: appColors.success,
                 ),
               _SummaryRow(
-                'Taxable Base Amount',
+                'Tax Lagane Se Pehle (Taxable)',
                 r.bill.taxes.subtotal != null
                     ? '₹${r.bill.taxes.subtotal!.toStringAsFixed(2)}'
                     : (r.bill.computedSubtotal > 0
@@ -587,13 +589,13 @@ class _SummaryTab extends StatelessWidget {
                         : '—'),
               ),
               _SummaryRow(
-                'Total GST & Taxes',
+                'Total GST / Tax',
                 '₹${r.bill.taxes.totalPrintedTax.toStringAsFixed(2)}',
                 color: r.bill.taxes.totalPrintedTax > 0 ? appColors.info : null,
               ),
               if (r.bill.totalCharges > 0)
                 _SummaryRow(
-                  'Additional Charges',
+                  'Extra Charges (Service/Packaging)',
                   '₹${r.bill.totalCharges.toStringAsFixed(2)}',
                   color: appColors.warning,
                 ),
@@ -604,12 +606,12 @@ class _SummaryTab extends StatelessWidget {
                 ),
               const Divider(height: 20),
               _SummaryRow(
-                'Calculated Net Amount',
+                'Calculated Expected Total',
                 '₹${(r.computedTotal ?? r.bill.calculatedNetTotal ?? r.printedTotal ?? 0.0).toStringAsFixed(2)}',
                 color: appColors.success,
               ),
               _SummaryRow(
-                'Bill Grand Total (printed)',
+                'Amount Billed',
                 r.printedTotal != null ? '₹${r.printedTotal!.toStringAsFixed(2)}' : '—',
               ),
               if (r.potentialExcess != null && r.potentialExcess! > 0)
@@ -627,7 +629,7 @@ class _SummaryTab extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Potential Overcharge: ₹${r.potentialExcess!.toStringAsFixed(2)} printed over calculated sum.',
+                          '⚠️ Overcharge Detected: ₹${r.potentialExcess!.toStringAsFixed(2)} excess amount charged!',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -644,7 +646,7 @@ class _SummaryTab extends StatelessWidget {
 
         // Accurate GST breakdown
         _SectionCard(
-          title: '🧾 GST Breakdown',
+          title: '🧾 Complete GST Breakdown',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -663,8 +665,8 @@ class _SummaryTab extends StatelessWidget {
                   r.bill.isInterState
                       ? '🌐 Inter-State Supply (IGST Applicable)'
                       : (r.bill.isIntraState
-                          ? '🏛️ Intra-State Supply (CGST + SGST/UTGST Split)'
-                          : '📄 Composition / Non-GST Supply'),
+                          ? '🏛️ Intra-State Supply (CGST + SGST Applicable)'
+                          : '📄 Composition / Non-GST Bill'),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -675,12 +677,12 @@ class _SummaryTab extends StatelessWidget {
 
               if (r.bill.taxes.cgstAmount != null)
                 _SummaryRow(
-                  'CGST (Central GST)${r.bill.taxes.cgstRate != null ? " @ ${r.bill.taxes.cgstRate}%" : ""}',
+                  'CGST (Central Tax)${r.bill.taxes.cgstRate != null ? " @ ${r.bill.taxes.cgstRate}%" : ""}',
                   '₹${r.bill.taxes.cgstAmount!.toStringAsFixed(2)}',
                 ),
               if (r.bill.taxes.sgstAmount != null)
                 _SummaryRow(
-                  'SGST (State/UT GST)${r.bill.taxes.sgstRate != null ? " @ ${r.bill.taxes.sgstRate}%" : ""}',
+                  'SGST (State Tax)${r.bill.taxes.sgstRate != null ? " @ ${r.bill.taxes.sgstRate}%" : ""}',
                   '₹${r.bill.taxes.sgstAmount!.toStringAsFixed(2)}',
                 ),
               if (r.bill.taxes.igstAmount != null)
@@ -690,7 +692,7 @@ class _SummaryTab extends StatelessWidget {
                 ),
               if (r.bill.taxes.cessAmount != null && r.bill.taxes.cessAmount! > 0)
                 _SummaryRow(
-                  'Compensation Cess',
+                  'Cess (Compensation)',
                   '₹${r.bill.taxes.cessAmount!.toStringAsFixed(2)}',
                 ),
 
@@ -706,7 +708,7 @@ class _SummaryTab extends StatelessWidget {
 
               const Divider(height: 16),
               _SummaryRow(
-                'Total GST Tax',
+                'Total GST Amount',
                 '₹${r.bill.taxes.totalPrintedTax.toStringAsFixed(2)}',
                 color: appColors.success,
               ),
@@ -718,7 +720,7 @@ class _SummaryTab extends StatelessWidget {
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text(
-                    'No separate GST split found on this receipt.',
+                    'No separate GST breakdown found on this receipt.',
                     style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
                   ),
                 ),
@@ -729,11 +731,11 @@ class _SummaryTab extends StatelessWidget {
         // Extra charges
         if (r.bill.charges.isNotEmpty)
           _SectionCard(
-            title: '🧮 Extra Charges',
+            title: '🧮 Additional Charges',
             child: Column(
               children: r.bill.charges.map((c) {
                 return _SummaryRow(
-                  c.label,
+                  c.isServiceCharge ? 'Service Charge (Optional)' : c.label,
                   '₹${c.amount.toStringAsFixed(2)}',
                   color: c.isServiceCharge ? appColors.warning : null,
                 );
@@ -744,7 +746,7 @@ class _SummaryTab extends StatelessWidget {
         // Item list
         if (r.itemResults.isNotEmpty)
           _SectionCard(
-            title: '🔍 Item Analysis',
+            title: '🔍 Itemized Bill Details',
             child: Column(
               children: r.itemResults.map((ir) {
                 final itemColor = ir.status == FindingSeverity.ok
@@ -1096,6 +1098,219 @@ class _SourceCard extends StatelessWidget {
 }
 
 // ─── Reusable widgets ─────────────────────────────────────────────────────────
+
+/// Quick Verdict Card — shows the most important info at a glance
+class _QuickVerdictCard extends StatelessWidget {
+  final BillAnalysisResult result;
+  final AppColors appColors;
+  final ThemeData theme;
+
+  const _QuickVerdictCard({
+    required this.result,
+    required this.appColors,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final r = result;
+    final isDark = theme.brightness == Brightness.dark;
+
+    Color verdictColor;
+    String verdictTitle;
+    String verdictSubtitle;
+    IconData verdictIcon;
+
+    switch (r.overallResult) {
+      case OverallResult.looksCorrect:
+        verdictColor = appColors.success;
+        verdictTitle = 'Bill Appears Legitimate';
+        verdictSubtitle = 'No major issues detected';
+        verdictIcon = Icons.check_circle_rounded;
+        break;
+      case OverallResult.needsVerification:
+        verdictColor = appColors.warning;
+        verdictTitle = 'Requires Verification';
+        verdictSubtitle = '${r.verifyFindings.length} items flagged for review';
+        verdictIcon = Icons.warning_amber_rounded;
+        break;
+      case OverallResult.suspiciousCharges:
+        verdictColor = appColors.error;
+        verdictTitle = 'Potential Fraud / Overcharge!';
+        verdictSubtitle = '${r.errorFindings.length + r.suspiciousFindings.length} serious issues found';
+        verdictIcon = Icons.error_rounded;
+        break;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            verdictColor.withValues(alpha: isDark ? 0.2 : 0.1),
+            verdictColor.withValues(alpha: isDark ? 0.08 : 0.04),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: verdictColor.withValues(alpha: 0.4)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(verdictIcon, color: verdictColor, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      verdictTitle,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: verdictColor,
+                      ),
+                    ),
+                    Text(
+                      verdictSubtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.textTheme.bodySmall?.color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Key numbers in a row
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.cardColor.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                if (r.printedTotal != null)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Amount on Bill:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(
+                        '₹${r.printedTotal!.toStringAsFixed(2)}',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: verdictColor),
+                      ),
+                    ],
+                  ),
+                if (r.computedTotal != null && r.computedTotal != r.printedTotal) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Calculated Expected:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(
+                        '₹${r.computedTotal!.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.green),
+                      ),
+                    ],
+                  ),
+                ],
+                if (r.potentialExcess != null && r.potentialExcess! > 0) ...[
+                  const Divider(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Excess Charged:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.red)),
+                      Text(
+                        '₹${r.potentialExcess!.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.red),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          // GST Rate info
+          if (r.bill.taxes.effectiveGstRate != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _GstRateChip(
+                  label: 'GST Rate',
+                  rate: '${r.bill.taxes.effectiveGstRate!.toStringAsFixed(1)}%',
+                  color: appColors.info,
+                ),
+                const SizedBox(width: 8),
+                if (r.bill.taxes.cgstRate != null)
+                  _GstRateChip(
+                    label: 'CGST',
+                    rate: '${r.bill.taxes.cgstRate}%',
+                    color: appColors.info,
+                  ),
+                if (r.bill.taxes.sgstRate != null) ...[
+                  const SizedBox(width: 8),
+                  _GstRateChip(
+                    label: 'SGST',
+                    rate: '${r.bill.taxes.sgstRate}%',
+                    color: appColors.scannerCyan,
+                  ),
+                ],
+                if (r.bill.taxes.igstRate != null) ...[
+                  const SizedBox(width: 8),
+                  _GstRateChip(
+                    label: 'IGST',
+                    rate: '${r.bill.taxes.igstRate}%',
+                    color: appColors.scannerCyan,
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GstRateChip extends StatelessWidget {
+  final String label;
+  final String rate;
+  final Color color;
+
+  const _GstRateChip({
+    required this.label,
+    required this.rate,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        '$label: $rate',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
 
 class _SectionCard extends StatelessWidget {
   final String title;

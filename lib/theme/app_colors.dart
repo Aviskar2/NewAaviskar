@@ -141,17 +141,33 @@ class AppColors extends ThemeExtension<AppColors> {
     if (other is! AppColors) return this;
     return AppColors(
       success: Color.lerp(success, other.success, t)!,
-      successContainer: Color.lerp(successContainer, other.successContainer, t)!,
+      successContainer: Color.lerp(
+        successContainer,
+        other.successContainer,
+        t,
+      )!,
       warning: Color.lerp(warning, other.warning, t)!,
-      warningContainer: Color.lerp(warningContainer, other.warningContainer, t)!,
+      warningContainer: Color.lerp(
+        warningContainer,
+        other.warningContainer,
+        t,
+      )!,
       error: Color.lerp(error, other.error, t)!,
       errorContainer: Color.lerp(errorContainer, other.errorContainer, t)!,
       info: Color.lerp(info, other.info, t)!,
       infoContainer: Color.lerp(infoContainer, other.infoContainer, t)!,
       aiPurple: Color.lerp(aiPurple, other.aiPurple, t)!,
-      aiPurpleContainer: Color.lerp(aiPurpleContainer, other.aiPurpleContainer, t)!,
+      aiPurpleContainer: Color.lerp(
+        aiPurpleContainer,
+        other.aiPurpleContainer,
+        t,
+      )!,
       scannerCyan: Color.lerp(scannerCyan, other.scannerCyan, t)!,
-      scannerCyanContainer: Color.lerp(scannerCyanContainer, other.scannerCyanContainer, t)!,
+      scannerCyanContainer: Color.lerp(
+        scannerCyanContainer,
+        other.scannerCyanContainer,
+        t,
+      )!,
       surfaceElevated: Color.lerp(surfaceElevated, other.surfaceElevated, t)!,
       surfaceOverlay: Color.lerp(surfaceOverlay, other.surfaceOverlay, t)!,
       surfaceBorder: Color.lerp(surfaceBorder, other.surfaceBorder, t)!,

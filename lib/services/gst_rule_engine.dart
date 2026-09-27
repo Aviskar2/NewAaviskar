@@ -307,15 +307,18 @@ class GstRuleEngine {
         findings.add(AnalysisFinding(
           id: 'service_charge_found_${charge.label}',
           severity: FindingSeverity.verify,
-          title: 'Service charge detected',
+          title: 'Mandatory service charge detected (Optional under CCPA Guidelines 2022)',
           explanation:
-              'A service charge of ₹${charge.amount.toStringAsFixed(2)} was found. '
-              'According to CCPA guidelines, service charge should not be automatically added '
-              'and customers are not obligated to pay it. You may request it to be removed.',
+              'This bill includes a service charge of ₹${charge.amount.toStringAsFixed(2)}. '
+              'Under Consumer Protection Act (CCPA) 2022 guidelines:\n'
+              '• Restaurants and hotels cannot add service charge automatically\n'
+              '• It is strictly voluntary — consumers are under no legal obligation to pay\n'
+              '• If not explicitly consented to beforehand, you can request its removal\n'
+              '• It cannot be demanded as an enforced substitute for tips or gratuities',
           whatFound: '${charge.label}: ₹${charge.amount.toStringAsFixed(2)}',
           recommendation:
-              'If this was added automatically (not disclosed before ordering), '
-              'you may request the establishment to remove it.',
+              'You can ask the establishment to remove this service charge. '
+              'Under CCPA guidelines, you have the legal right to decline paying mandatory service charges.',
           category: 'Service Charge',
           source: _govService.ccpaServiceChargeSource,
         ));
@@ -326,9 +329,10 @@ class GstRuleEngine {
             severity: FindingSeverity.suspicious,
             title: 'GST applied on top of service charge',
             explanation:
-                'GST appears to have been charged on the service charge amount. '
-                'If the service charge itself is considered a voluntary tip, applying GST on it may be questionable.',
-            recommendation: 'Ask the establishment to clarify the GST basis.',
+                'GST was calculated on top of the service charge (₹${charge.amount.toStringAsFixed(2)}). '
+                'Since service charge is voluntary, charging GST on it may be improper '
+                'and inflates the customer bill.',
+            recommendation: 'Ask the restaurant to clarify why GST was charged on top of the service charge.',
             category: 'Service Charge',
             source: _govService.ccpaServiceChargeSource,
           ));

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/legal/models/legal_finding.dart';
 import '../../core/legal/models/ocr_document.dart';
 import '../../widgets/legal_analyzer/document_highlight_painter.dart';
+import '../../widgets/legal_analyzer/highlighted_document_paper.dart';
 import 'legal_finding_detail_sheet.dart';
 
 class InteractiveDocumentViewer extends StatefulWidget {
@@ -18,18 +19,26 @@ class InteractiveDocumentViewer extends StatefulWidget {
   });
 
   @override
-  State<InteractiveDocumentViewer> createState() => _InteractiveDocumentViewerState();
+  State<InteractiveDocumentViewer> createState() =>
+      _InteractiveDocumentViewerState();
 }
 
 class _InteractiveDocumentViewerState extends State<InteractiveDocumentViewer> {
   int _currentPage = 0;
   String? _selectedFindingId;
-  final TransformationController _transformController = TransformationController();
+  bool _showImageView = false;
+  final TransformationController _transformController =
+      TransformationController();
 
   @override
   void initState() {
     super.initState();
     _selectedFindingId = widget.initialFindingId;
+    final page = widget.document.pages.isNotEmpty
+        ? widget.document.pages.first
+        : null;
+    _showImageView =
+        page?.imagePath != null && File(page!.imagePath!).existsSync();
   }
 
   @override
@@ -74,11 +83,23 @@ class _InteractiveDocumentViewerState extends State<InteractiveDocumentViewer> {
     final page = widget.document.pages.isNotEmpty
         ? widget.document.pages[_currentPage]
         : null;
+    final hasImage =
+        page?.imagePath != null && File(page!.imagePath!).existsSync();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Interactive Document View'),
+        title: const Text('Highlighted Document View'),
         actions: [
+          if (hasImage)
+            IconButton(
+              icon: Icon(
+                _showImageView ? Icons.article_outlined : Icons.image_outlined,
+              ),
+              tooltip: _showImageView
+                  ? 'Switch to Highlighted Text'
+                  : 'Switch to Scanned Image',
+              onPressed: () => setState(() => _showImageView = !_showImageView),
+            ),
           IconButton(
             icon: const Icon(Icons.zoom_out_map),
             tooltip: 'Reset Zoom',
@@ -94,79 +115,72 @@ class _InteractiveDocumentViewerState extends State<InteractiveDocumentViewer> {
             color: theme.colorScheme.primary.withValues(alpha: 0.08),
             child: Row(
               children: [
-                const Icon(Icons.touch_app_outlined, size: 16, color: Color(0xFF2563EB)),
+                const Icon(
+                  Icons.touch_app_outlined,
+                  size: 16,
+                  color: Color(0xFF2563EB),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Pinch to zoom. Tap highlighted boxes to view law citations & advice.',
-                    style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                    _showImageView
+                        ? 'Pinch to zoom image. Tap highlighted boxes to view Indian law citations.'
+                        : 'Tap any highlighted statement to inspect the law, legal risk, and advice.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
 
-          // Main canvas / image view
+          // Main View: Either HighlightedDocumentPaper or Image Overlay
           Expanded(
-            child: InteractiveViewer(
-              transformationController: _transformController,
-              minScale: 0.8,
-              maxScale: 4.0,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final hasImage = page?.imagePath != null && File(page!.imagePath!).existsSync();
-
-                      return GestureDetector(
-                        onTapUp: (details) => _onTapHighlight(details, Size(constraints.maxWidth, constraints.maxHeight)),
-                        child: CustomPaint(
-                          foregroundPainter: DocumentHighlightPainter(
-                            findings: widget.findings,
-                            selectedFindingId: _selectedFindingId,
-                            pageIndex: _currentPage,
-                          ),
-                          child: hasImage
-                              ? ClipRRect(
+            child: _showImageView && hasImage
+                ? InteractiveViewer(
+                    transformationController: _transformController,
+                    minScale: 0.8,
+                    maxScale: 4.0,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return GestureDetector(
+                              onTapUp: (details) => _onTapHighlight(
+                                details,
+                                Size(
+                                  constraints.maxWidth,
+                                  constraints.maxHeight,
+                                ),
+                              ),
+                              child: CustomPaint(
+                                foregroundPainter: DocumentHighlightPainter(
+                                  findings: widget.findings,
+                                  selectedFindingId: _selectedFindingId,
+                                  pageIndex: _currentPage,
+                                ),
+                                child: ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
                                   child: Image.file(
                                     File(page.imagePath!),
                                     fit: BoxFit.contain,
                                   ),
-                                )
-                              : Container(
-                                  width: constraints.maxWidth,
-                                  height: constraints.maxHeight,
-                                  padding: const EdgeInsets.all(20),
-                                  decoration: BoxDecoration(
-                                    color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.1),
-                                        blurRadius: 10,
-                                      ),
-                                    ],
-                                  ),
-                                  child: SingleChildScrollView(
-                                    child: Text(
-                                      widget.document.rawText,
-                                      style: const TextStyle(
-                                        fontFamily: 'RobotoMono',
-                                        fontSize: 12,
-                                        height: 1.6,
-                                      ),
-                                    ),
-                                  ),
                                 ),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
+                      ),
+                    ),
+                  )
+                : HighlightedDocumentPaper(
+                    rawText: widget.document.rawText,
+                    findings: widget.findings,
+                    initialFindingId: _selectedFindingId,
+                    onFindingTap: _showFindingSheet,
                   ),
-                ),
-              ),
-            ),
           ),
 
           // Multi-page bottom bar
@@ -175,14 +189,18 @@ class _InteractiveDocumentViewerState extends State<InteractiveDocumentViewer> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-                border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
+                border: Border(
+                  top: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.chevron_left),
-                    onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
+                    onPressed: _currentPage > 0
+                        ? () => setState(() => _currentPage--)
+                        : null,
                   ),
                   Text(
                     'Page ${_currentPage + 1} of ${widget.document.pages.length}',

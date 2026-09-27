@@ -1,22 +1,23 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/ocr_service.dart';
 import '../services/scan_history_service.dart';
 import '../utils/permissions.dart';
 import '../screens/scanner/translation_screen.dart';
 import '../screens/scanner/image_overlay_translation_screen.dart';
+import '../screens/scanner/document_translation_screen.dart';
 
 enum TranslationTargetMode {
+  imageOverlay,
+  document,
   text,
-  image,
 }
 
-/// Simple, modern translation modal with:
-/// 1) Upload Image option at the start
-/// 2) Exactly two translation options: Text Translation & Image Translation
+/// Simple, Modern Translation Modal with 3 Clear, Dedicated Modes:
+/// 1) Image & Camera Translation (In-Place Structure Replacement)
+/// 2) Document Translation (PDF, Word DOCX, TXT with page layout & PDF export)
+/// 3) Text Translation (Direct bilingual typing & speech)
 class TranslationModeSheet extends StatefulWidget {
   final OcrService ocrService;
   final ScanHistoryService historyService;
@@ -56,19 +57,15 @@ class TranslationModeSheet extends StatefulWidget {
 }
 
 class _TranslationModeSheetState extends State<TranslationModeSheet> {
-  String? _currentImagePath;
-  String? _currentImageName;
   bool _isProcessing = false;
   String _processingMessage = '';
 
   @override
   void initState() {
     super.initState();
-    _currentImagePath = widget.initialImagePath;
-    _currentImageName = widget.documentName;
   }
 
-  Future<void> _pickImageFromCamera({TranslationTargetMode? directMode}) async {
+  Future<void> _pickImageFromCamera() async {
     final granted = await PermissionsUtil.requestCamera(context);
     if (!granted) return;
 
@@ -80,19 +77,11 @@ class _TranslationModeSheetState extends State<TranslationModeSheet> {
     );
 
     if (photo != null && mounted) {
-      final name = photo.path.split(Platform.pathSeparator).last;
-      setState(() {
-        _currentImagePath = photo.path;
-        _currentImageName = name;
-      });
-
-      if (directMode != null) {
-        await _processAndNavigate(imagePath: photo.path, mode: directMode);
-      }
+      await _processImageOverlay(photo.path);
     }
   }
 
-  Future<void> _pickImageFromGallery({TranslationTargetMode? directMode}) async {
+  Future<void> _pickImageFromGallery() async {
     final granted = await PermissionsUtil.requestStorage(context);
     if (!granted) return;
 
@@ -103,27 +92,14 @@ class _TranslationModeSheetState extends State<TranslationModeSheet> {
     );
 
     if (image != null && mounted) {
-      final name = image.path.split(Platform.pathSeparator).last;
-      setState(() {
-        _currentImagePath = image.path;
-        _currentImageName = name;
-      });
-
-      if (directMode != null) {
-        await _processAndNavigate(imagePath: image.path, mode: directMode);
-      }
+      await _processImageOverlay(image.path);
     }
   }
 
-  Future<void> _processAndNavigate({
-    required String imagePath,
-    required TranslationTargetMode mode,
-  }) async {
+  Future<void> _processImageOverlay(String imagePath) async {
     setState(() {
       _isProcessing = true;
-      _processingMessage = mode == TranslationTargetMode.text
-          ? 'Extracting text for translation…'
-          : 'Preparing image translation…';
+      _processingMessage = 'Analyzing image structure with OCR…';
     });
 
     try {
@@ -132,30 +108,18 @@ class _TranslationModeSheetState extends State<TranslationModeSheet> {
       await widget.historyService.addOcr(ocrResult);
 
       if (!mounted) return;
+      final navigator = Navigator.of(context);
+      Navigator.pop(context); // Close sheet
 
-      Navigator.pop(context); // Close modal
-
-      if (mode == TranslationTargetMode.text) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => TranslationScreen(
-              initialText: ocrResult.fullText,
-              historyService: widget.historyService,
-              ocrService: widget.ocrService,
-            ),
+      navigator.push(
+        MaterialPageRoute(
+          builder: (_) => ImageOverlayTranslationScreen(
+            ocrResult: ocrResult,
+            ocrService: widget.ocrService,
+            historyService: widget.historyService,
           ),
-        );
-      } else {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ImageOverlayTranslationScreen(
-              ocrResult: ocrResult,
-            ),
-          ),
-        );
-      }
+        ),
+      );
     } catch (e) {
       if (mounted) {
         setState(() => _isProcessing = false);
@@ -170,91 +134,35 @@ class _TranslationModeSheetState extends State<TranslationModeSheet> {
     }
   }
 
-  void _onSelectMode(TranslationTargetMode mode) async {
-    HapticFeedback.mediumImpact();
+  void _openDocumentTranslation() {
+    HapticFeedback.lightImpact();
+    final navigator = Navigator.of(context);
+    Navigator.pop(context); // Close sheet
 
-    if (_currentImagePath != null &&
-        _currentImagePath!.isNotEmpty &&
-        File(_currentImagePath!).existsSync()) {
-      await _processAndNavigate(
-        imagePath: _currentImagePath!,
-        mode: mode,
-      );
-      return;
-    }
-
-    // No image selected yet -> show source picker
-    _showSourcePicker(mode);
+    navigator.push(
+      MaterialPageRoute(
+        builder: (_) => DocumentTranslationScreen(
+          autoPickFile: true,
+          historyService: widget.historyService,
+          ocrService: widget.ocrService,
+        ),
+      ),
+    );
   }
 
-  void _showSourcePicker(TranslationTargetMode mode) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+  void _openTextTranslation() {
+    HapticFeedback.lightImpact();
+    final navigator = Navigator.of(context);
+    Navigator.pop(context); // Close sheet
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    navigator.push(
+      MaterialPageRoute(
+        builder: (_) => TranslationScreen(
+          initialText: '',
+          historyService: widget.historyService,
+          ocrService: widget.ocrService,
+        ),
       ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Upload Document Image',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Choose how you want to upload your document:',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark ? Colors.white60 : Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                ListTile(
-                  leading: const Icon(Icons.camera_alt_rounded, color: Color(0xFF2563EB)),
-                  title: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.w600)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImageFromCamera(directMode: mode);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.photo_library_rounded, color: Color(0xFF9D00FF)),
-                  title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImageFromGallery(directMode: mode);
-                  },
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -290,7 +198,8 @@ class _TranslationModeSheetState extends State<TranslationModeSheet> {
                   children: [
                     const CircularProgressIndicator(
                       strokeWidth: 3,
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
                     ),
                     const SizedBox(height: 18),
                     Text(
@@ -322,258 +231,227 @@ class _TranslationModeSheetState extends State<TranslationModeSheet> {
 
                   // Header Title
                   Text(
-                    'Document Translation',
+                    'Choose Translation Feature',
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                       fontSize: 20,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Upload your document and choose how to translate:',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: isDark ? Colors.white60 : Colors.black54,
-                    ),
-                  ),
                   const SizedBox(height: 16),
 
-                  // 1) UPLOAD IMAGE SECTION AT THE START
-                  if (_currentImagePath == null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E2230) : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: isDark ? Colors.white12 : Colors.black12,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: const [
-                              Icon(Icons.upload_file_rounded, color: Color(0xFF2563EB), size: 20),
-                              SizedBox(width: 8),
-                              Text(
-                                'Step 1: Upload Document Image',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: () => _pickImageFromCamera(),
-                                  icon: const Icon(Icons.camera_alt_rounded, size: 18),
-                                  label: const Text('Camera'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFF2563EB),
-                                    side: const BorderSide(color: Color(0xFF2563EB)),
-                                    padding: const EdgeInsets.symmetric(vertical: 11),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: () => _pickImageFromGallery(),
-                                  icon: const Icon(Icons.photo_library_rounded, size: 18),
-                                  label: const Text('Gallery'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFF9D00FF),
-                                    side: const BorderSide(color: Color(0xFF9D00FF)),
-                                    padding: const EdgeInsets.symmetric(vertical: 11),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
-                    // Image already attached preview
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2563EB).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: const Color(0xFF2563EB).withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              File(_currentImagePath!),
-                              width: 40,
-                              height: 40,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Icon(
-                                Icons.image_rounded,
-                                color: Color(0xFF2563EB),
-                                size: 28,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _currentImageName ?? 'Document attached',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13.5,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'Ready for translation',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF2563EB),
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              setState(() {
-                                _currentImagePath = null;
-                                _currentImageName = null;
-                              });
-                            },
-                            child: const Text('Change'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 16),
-
-                  // SECTION 2: THE TWO TRANSLATION OPTIONS
-                  Text(
-                    'Step 2: Choose Translation Mode',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5,
-                      color: isDark ? Colors.white70 : Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  // Option 1: Text Translation
-                  _buildSimpleOptionTile(
+                  // Option 1: Image & Camera In-Place Structure Translation
+                  _buildFeatureOptionCard(
                     context: context,
-                    icon: Icons.text_snippet_rounded,
-                    title: '1) Text Translation',
-                    subtitle: 'Converts document text into clean, readable translated text',
+                    icon: Icons.camera_enhance_rounded,
+                    title: '1) Camera & Image Translation',
+                    badge: 'In-Place Overlay',
                     color: const Color(0xFF2563EB),
-                    onTap: () => _onSelectMode(TranslationTargetMode.text),
+                    onTap: () {
+                      _showImageSourcePicker();
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Option 2: Dedicated Document Translation (PDF, Word, TXT)
+                  _buildFeatureOptionCard(
+                    context: context,
+                    icon: Icons.picture_as_pdf_rounded,
+                    title: '2) Document Translation (PDF / Word)',
+                    badge: 'Multi-Page & PDF Export',
+                    color: const Color(0xFF9D00FF),
+                    onTap: _openDocumentTranslation,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Option 3: Text Translation
+                  _buildFeatureOptionCard(
+                    context: context,
+                    icon: Icons.translate_rounded,
+                    title: '3) Text & Speech Translation',
+                    badge: 'Instant Typing',
+                    color: const Color(0xFF16A34A),
+                    onTap: _openTextTranslation,
                   ),
 
                   const SizedBox(height: 10),
-
-                  // Option 2: Image Translation
-                  _buildSimpleOptionTile(
-                    context: context,
-                    icon: Icons.photo_filter_rounded,
-                    title: '2) Image Translation',
-                    subtitle: 'Translates directly onto the image with exact font size & layout',
-                    color: const Color(0xFF9D00FF),
-                    onTap: () => _onSelectMode(TranslationTargetMode.image),
-                  ),
-                  const SizedBox(height: 8),
                 ],
               ),
       ),
     );
   }
 
-  Widget _buildSimpleOptionTile({
+  void _showImageSourcePicker() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E1E2E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Image & Camera Translation',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Select image source to translate in-place on the image:',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: isDark ? Colors.white60 : Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                ListTile(
+                  leading: const Icon(Icons.camera_alt_rounded,
+                      color: Color(0xFF2563EB), size: 24),
+                  title: const Text('Capture with Camera',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Take photo of document or signboard'),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImageFromCamera();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_rounded,
+                      color: Color(0xFF9D00FF), size: 24),
+                  title: const Text('Choose from Gallery',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Select existing photo or screenshot'),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImageFromGallery();
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFeatureOptionCard({
     required BuildContext context,
     required IconData icon,
     required String title,
-    required String subtitle,
+    String? subtitle,
+    required String badge,
     required Color color,
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final hasSubtitle = subtitle != null && subtitle.isNotEmpty;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E2230) : const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(16),
+            color: isDark
+                ? color.withValues(alpha: 0.12)
+                : color.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: color.withValues(alpha: isDark ? 0.35 : 0.25),
-              width: 1.2,
+              color: color.withValues(alpha: isDark ? 0.35 : 0.22),
+              width: 1.3,
             ),
           ),
           child: Row(
+            crossAxisAlignment:
+                hasSubtitle ? CrossAxisAlignment.start : CrossAxisAlignment.center,
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(icon, color: color, size: 22),
+                child: Icon(icon, color: color, size: 24),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14.5,
+                              color: isDark ? Colors.white : color,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            badge,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: isDark ? Colors.white60 : Colors.black54,
-                        fontSize: 12,
+                    if (hasSubtitle) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: isDark ? Colors.white70 : Colors.black87,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 14,
-                color: isDark ? Colors.white38 : Colors.black38,
               ),
             ],
           ),

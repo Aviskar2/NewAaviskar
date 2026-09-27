@@ -5,6 +5,7 @@ import '../../core/legal/models/legal_analysis_result.dart';
 import '../../core/legal/models/legal_document_type.dart';
 import '../../core/legal/models/legal_finding.dart';
 import '../../utils/url_launcher_util.dart';
+import '../../widgets/legal_analyzer/highlighted_document_paper.dart';
 import '../../widgets/legal_analyzer/legal_risk_gauge.dart';
 import 'interactive_document_viewer.dart';
 import 'legal_finding_detail_sheet.dart';
@@ -28,7 +29,7 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -81,6 +82,11 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
         centerTitle: true,
         actions: [
           IconButton(
+            icon: const Icon(Icons.fullscreen_rounded),
+            tooltip: 'Interactive Viewer',
+            onPressed: () => _openInteractiveViewer(),
+          ),
+          IconButton(
             icon: const Icon(Icons.share_outlined),
             tooltip: 'Share Report',
             onPressed: () {
@@ -96,35 +102,35 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
           tabs: [
-            const Tab(text: 'Overview & Highlights'),
-            Tab(text: '🚨 High Risk (${r.highRiskFindings.length})'),
-            Tab(text: '🔍 Anomalies (${r.anomalies.length})'),
-            const Tab(text: '📜 Statutory Laws'),
+            const Tab(
+              icon: Icon(Icons.description_outlined, size: 18),
+              text: 'Document Analysis',
+            ),
+            Tab(
+              icon: const Icon(Icons.gavel_rounded, size: 18),
+              text: 'Statutory Laws (${r.findings.expand((f) => f.statutoryBasis).toSet().length})',
+            ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openInteractiveViewer(),
-        icon: const Icon(Icons.document_scanner_rounded),
-        label: const Text('View Highlights on Image'),
+        icon: const Icon(Icons.fullscreen_rounded),
+        label: const Text('Interactive Paper'),
         backgroundColor: const Color(0xFFDC2626),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildOverviewTab(theme, isDark),
-          _buildFindingsList(r.highRiskFindings, 'No high-risk clauses found 🎉'),
-          _buildAnomaliesTab(theme, isDark),
+          _buildUnifiedAnalysisTab(theme, isDark),
           _buildStatutesTab(theme, isDark),
         ],
       ),
     );
   }
 
-  Widget _buildOverviewTab(ThemeData theme, bool isDark) {
+  Widget _buildUnifiedAnalysisTab(ThemeData theme, bool isDark) {
     final r = widget.result;
     final hasHighRisk = r.highRiskFindings.isNotEmpty;
 
@@ -135,7 +141,7 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
         LegalRiskGauge(score: r.overallRiskScore, severity: r.overallSeverity),
         const SizedBox(height: 12),
 
-        // Responsive Accuracy & Confidence Badge (No overflow on small screens)
+        // Responsive Accuracy & Confidence Badge
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -145,9 +151,9 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
               color: const Color(0xFF2563EB).withValues(alpha: 0.25),
             ),
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
-            children: const [
+            children: [
               Icon(Icons.verified_rounded, size: 16, color: Color(0xFF2563EB)),
               SizedBox(width: 8),
               Expanded(
@@ -168,7 +174,7 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
         const SizedBox(height: 14),
 
         // 2. High-Priority Alert Banner if Risks/Scams found
-        if (hasHighRisk)
+        if (hasHighRisk) ...[
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -198,7 +204,7 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
                       ),
                       const SizedBox(height: 2),
                       const Text(
-                        'Review the highlighted statements below before signing or paying.',
+                        'Review the highlighted statements and paper below before signing or executing.',
                         style: TextStyle(fontSize: 12, height: 1.3),
                       ),
                     ],
@@ -207,46 +213,10 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
               ],
             ),
           ),
-
-        if (hasHighRisk) const SizedBox(height: 16),
-
-        // 3. PROMINENT HIGHLIGHTED STATEMENTS SECTION
-        if (r.findings.isNotEmpty) ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Highlighted Risky Statements',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDC2626).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${r.findings.length} Flagged',
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFDC2626),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          // Render each highlighted statement
-          ...r.findings.map((f) => _buildHighlightedStatementCard(f, theme, isDark)),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
         ],
 
-        // 4. Plain Language Summary Card
+        // 3. Document Summary Card
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -275,9 +245,169 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
                 r.plainSummary,
                 style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
               ),
+              if (r.executiveLegalSummary.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  r.executiveLegalSummary,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontStyle: FontStyle.italic,
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
+        const SizedBox(height: 20),
+
+        // 4. Highlighted Document Paper Section
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.description_outlined, color: Color(0xFF2563EB), size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Highlighted Document Paper',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            TextButton.icon(
+              onPressed: () => _openInteractiveViewer(),
+              icon: const Icon(Icons.open_in_full_rounded, size: 15),
+              label: const Text('Fullscreen', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF2563EB),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        Container(
+          height: 440,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.withValues(alpha: 0.25)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: HighlightedDocumentPaper(
+            rawText: widget.result.document.rawText,
+            findings: widget.result.findings,
+            onFindingTap: (f) {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => LegalFindingDetailSheet(finding: f),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // 5. High-Risk & Flagged Clauses Section
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'High-Risk & Flagged Clauses',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${r.findings.length} Detected',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFDC2626),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        if (r.findings.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF16A34A).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: 0.2)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 24),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'No risky or unfair clauses detected in this agreement 🎉',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ...r.findings.map((f) => _buildHighlightedStatementCard(f, theme, isDark)),
+
+        const SizedBox(height: 24),
+
+        // 6. Document Anomalies & Authenticity Checks Section
+        Text(
+          'Structural & Authenticity Checks',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        if (r.anomalies.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.verified_rounded, size: 28, color: Color(0xFF16A34A)),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Document Format & Structure Verified ✅',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'No stamp paper, party, or date discrepancies detected.',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ...r.anomalies.map((a) => _buildAnomalyCard(a, theme, isDark)),
 
         const SizedBox(height: 80),
       ],
@@ -404,7 +534,82 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
+
+                // COMPARED AGAINST LATEST RUNNING INDIAN LAW
+                if (finding.statutoryBasis.isNotEmpty) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2563EB).withValues(alpha: isDark ? 0.15 : 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.balance_rounded, size: 14, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: finding.statutoryBasis.first.isModernLaw
+                                    ? const Color(0xFF16A34A).withValues(alpha: 0.15)
+                                    : const Color(0xFF2563EB).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                finding.statutoryBasis.first.statusBadgeText,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: finding.statutoryBasis.first.isModernLaw
+                                      ? const Color(0xFF15803D)
+                                      : const Color(0xFF1E40AF),
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            const Text(
+                              'Compare ↗',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2563EB),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${finding.statutoryBasis.first.actName} — ${finding.statutoryBasis.first.section}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E40AF),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Mandate: ${finding.statutoryBasis.first.title}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white70 : const Color(0xFF334155),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
 
                 // ACTIONABLE RECOMMENDATION PILL
                 Container(
@@ -440,146 +645,263 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
     );
   }
 
-  Widget _buildFindingsList(List<LegalFinding> findings, String emptyMessage) {
-    if (findings.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.check_circle_outline_rounded, size: 48, color: Color(0xFF16A34A)),
-              const SizedBox(height: 12),
-              Text(
-                emptyMessage,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: findings.length,
-      itemBuilder: (context, index) {
-        final f = findings[index];
-        return _buildHighlightedStatementCard(f, Theme.of(context), Theme.of(context).brightness == Brightness.dark);
-      },
-    );
-  }
-
-  Widget _buildAnomaliesTab(ThemeData theme, bool isDark) {
-    final anomalies = widget.result.anomalies;
-    if (anomalies.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.verified_rounded, size: 48, color: Color(0xFF16A34A)),
-              SizedBox(height: 12),
-              Text(
-                'Document Format & Structure Verified ✅',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'No stamp paper, party, or date anomalies detected.',
-                style: TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: anomalies.length,
-      itemBuilder: (context, index) {
-        final a = anomalies[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildAnomalyCard(DocumentAnomaly a, ThemeData theme, bool isDark) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Text(a.category.icon, style: const TextStyle(fontSize: 18)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        a.title,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(a.explanation, style: theme.textTheme.bodySmall),
-                if (a.evidence != null && a.evidence!.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text('Evidence: "${a.evidence}"', style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+                Text(a.category.icon, style: const TextStyle(fontSize: 18)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    a.title,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
+                ),
               ],
             ),
-          ),
-        );
-      },
+            const SizedBox(height: 6),
+            Text(a.explanation, style: theme.textTheme.bodySmall),
+            if (a.evidence.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text('Evidence: "${a.evidence}"',
+                    style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildStatutesTab(ThemeData theme, bool isDark) {
+    final citations = widget.result.findings.expand((f) => f.statutoryBasis).toSet().toList();
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Live Law Registry Header Card
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: const Color(0xFF2563EB).withValues(alpha: isDark ? 0.15 : 0.08),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.25)),
           ),
-          child: const Text(
-            'Applicable Indian Statutory Provisions & Precedents for Scanned Documents',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF2563EB)),
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...widget.result.findings.expand((f) => f.statutoryBasis).toSet().map((s) {
-          return Card(
-            margin: const EdgeInsets.only(bottom: 10),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            child: ListTile(
-              title: Text('${s.actName} — ${s.section}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(s.description, style: const TextStyle(fontSize: 12)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2563EB).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.gavel_rounded, size: 20, color: Color(0xFF2563EB)),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Live Indian Statutory Registry',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF2563EB)),
+                        ),
+                        Text(
+                          'Auto-synced with active 2024 laws & Gazette of India',
+                          style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF16A34A).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF16A34A)),
+                        SizedBox(width: 4),
+                        Text(
+                          'Active Law',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              trailing: s.officialSourceUrl != null
-                  ? IconButton(
-                      icon: const Icon(Icons.open_in_new_rounded, size: 18, color: Color(0xFF2563EB)),
-                      onPressed: () => UrlLauncherUtil.openUrl(context, s.officialSourceUrl!),
-                    )
-                  : null,
+                Text(
+                  'Cross-referenced with active statutory provisions from Bharatiya Nyaya Sanhita (BNS 2023), Bharatiya Sakshya Adhiniyam (BSA 2023), DPDP Act 2023, Model Tenancy Act 2021, and RERA 2016. Provisions are verified once every 24 hours in the background.',
+                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 12, height: 1.35),
+                ),
+              ],
             ),
-          );
-        }),
+          ),
+          const SizedBox(height: 14),
+
+        if (citations.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              child: Text(
+                'No statutory violations detected in this document.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
+              ),
+            ),
+          )
+        else
+          ...citations.map((s) {
+            final relatedFindings = widget.result.findings
+                .where((f) => f.statutoryBasis.any((b) => b.actName == s.actName && b.section == s.section))
+                .toList();
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              elevation: 0,
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: s.isModernLaw
+                                      ? const Color(0xFF16A34A).withValues(alpha: 0.15)
+                                      : const Color(0xFF2563EB).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  s.statusBadgeText,
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: s.isModernLaw ? const Color(0xFF15803D) : const Color(0xFF1E40AF),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${s.actName} — ${s.section}',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF1E40AF)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (s.officialSourceUrl != null)
+                          InkWell(
+                            onTap: () => UrlLauncherUtil.openUrl(context, s.officialSourceUrl!),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Text(
+                                    'India Code',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2563EB)),
+                                  ),
+                                  SizedBox(width: 3),
+                                  Icon(Icons.open_in_new_rounded, size: 14, color: Color(0xFF2563EB)),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      s.title,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      s.description,
+                      style: theme.textTheme.bodySmall?.copyWith(fontSize: 12, height: 1.35),
+                    ),
+                    if (relatedFindings.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDC2626).withValues(alpha: isDark ? 0.15 : 0.06),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFDC2626).withValues(alpha: 0.2)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.compare_arrows_rounded, size: 14, color: Color(0xFFDC2626)),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'COMPARED WITH ${relatedFindings.length} CLAUSE(S) IN YOUR DOCUMENT:',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFDC2626),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ...relatedFindings.map((rf) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('• ', style: TextStyle(color: rf.severity.color, fontWeight: FontWeight.bold)),
+                                  Expanded(
+                                    child: Text(
+                                      '"${rf.rawExcerpt}"',
+                                      style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }),
       ],
     );
   }

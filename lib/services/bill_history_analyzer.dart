@@ -151,6 +151,7 @@ class BillHistoryAnalyzer {
             'Monitor this vendor — progressive price increases without '
             'corresponding service changes may indicate overcharging.',
         category: 'History',
+        source: _govService.consumerProtectionSource,
       ));
     }
   }

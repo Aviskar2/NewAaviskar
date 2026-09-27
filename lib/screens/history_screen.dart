@@ -26,7 +26,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     // Filter items based on search query and category selector
     final filteredItems = widget.historyItems.where((item) {

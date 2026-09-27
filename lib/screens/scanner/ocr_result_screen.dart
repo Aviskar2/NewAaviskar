@@ -83,6 +83,8 @@ class _OcrResultScreenState extends State<OcrResultScreen> {
       MaterialPageRoute(
         builder: (_) => ImageOverlayTranslationScreen(
           ocrResult: widget.result,
+          ocrService: widget.ocrService,
+          historyService: widget.historyService,
         ),
       ),
     );

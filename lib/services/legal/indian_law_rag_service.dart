@@ -12,7 +12,7 @@ class IndianLawRagService {
     final lower = query.toLowerCase();
     final results = <StatutoryCitation>[];
 
-    for (final provision in IndianActsDatabase.statutoryProvisions) {
+    for (final provision in IndianActsDatabase.allProvisions) {
       if (provision.title.toLowerCase().contains(lower) ||
           provision.actName.toLowerCase().contains(lower) ||
           provision.section.toLowerCase().contains(lower) ||
@@ -22,8 +22,8 @@ class IndianLawRagService {
     }
 
     if (results.isEmpty) {
-      // Return default Indian Contract Act provisions
-      return IndianActsDatabase.statutoryProvisions.take(2).toList();
+      // Return default statutory provisions
+      return IndianActsDatabase.allProvisions.take(2).toList();
     }
 
     return results;

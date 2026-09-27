@@ -11,10 +11,10 @@ class MedicineEntryScreen extends StatefulWidget {
   final ScanHistoryService historyService;
 
   const MedicineEntryScreen({
-    Key? key,
+    super.key,
     required this.ocrService,
     required this.historyService,
-  }) : super(key: key);
+  });
 
   @override
   State<MedicineEntryScreen> createState() => _MedicineEntryScreenState();
@@ -91,74 +91,7 @@ class _MedicineEntryScreenState extends State<MedicineEntryScreen> {
     }
   }
 
-  // ─── Preset Sample Medicines for Live Demo ─────────────────────────────────
 
-  void _loadDolo650() {
-    const text = '''
-DOLO 650 TABLETS
-Each uncoated tablet contains:
-Paracetamol IP 650 mg
-Mfg. Lic. No.: G/25/1458
-B.No.: DL9042
-MFD.: 01/2026
-EXP.: 12/2028
-MRP Rs. 34.00 (Incl. of all taxes)
-Dosage: As directed by the physician.
-Storage: Store below 30°C in a dry place. Protect from light.
-Manufactured in India by: Micro Labs Limited, Gujarat.
-''';
-    _runDirectAnalysis(text);
-  }
-
-  void _loadAugmentin625H1() {
-    const text = '''
-AUGMENTIN 625 DUO TABLETS
-SCHEDULE H1 PRESCRIPTION DRUG - CAUTION
-Warning: It is dangerous to take this preparation except in accordance with medical advice.
-Not to be sold by retail without the prescription of a Registered Medical Practitioner.
-Composition:
-Amoxicillin Trihydrate IP eq. to Amoxicillin 500 mg
-Potassium Clavulanate Diluted IP eq. to Clavulanic Acid 125 mg
-Mfg. Lic. No.: MNB/05/189
-Batch No.: AG8821
-MFG. DATE: 15/02/2026
-EXPIRY DATE: 14/02/2028
-MRP: Rs. 220.00
-Marketed by: GlaxoSmithKline Pharmaceuticals Ltd.
-''';
-    _runDirectAnalysis(text);
-  }
-
-  void _loadExpiredMedicine() {
-    const text = '''
-CETZINE 10MG TABLETS
-Each film coated tablet contains:
-Cetirizine Hydrochloride IP 10 mg
-Mfg. Lic. No.: MH/102/2019
-B.No.: CT4109
-MFD: 01/01/2024
-EXP: 31/12/2025
-Warning: Schedule H Prescription Drug.
-Store in a cool dry place.
-Manufactured by: Dr. Reddy's Laboratories.
-''';
-    _runDirectAnalysis(text);
-  }
-
-  void _loadBannedFdc() {
-    const text = '''
-NIMESULIDE AND PARACETAMOL DISPERSIBLE TABLETS
-Each dispersible tablet contains:
-Nimesulide BP 100 mg
-Paracetamol IP 325 mg
-Batch No.: NM7011
-MFD: 10/2025
-EXP: 09/2027
-Mfg Lic No: UA/2018/442
-Warning: Combination banned for pediatric use under S.O. 560(E).
-''';
-    _runDirectAnalysis(text);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -275,39 +208,7 @@ Warning: Combination banned for pediatric use under S.O. 560(E).
               ),
             ],
           ),
-          const SizedBox(height: 28),
 
-          // Presets for Live Testing
-          Text('OR TEST WITH SAMPLE MEDICINES', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          _PresetMedTile(
-            title: 'Dolo 650 (Paracetamol 650mg)',
-            subtitle: 'Branded MRP ₹34 vs Jan Aushadhi ₹10 · Save 70%',
-            badge: 'Save 70% 💰',
-            badgeColor: Colors.green,
-            onTap: _loadDolo650,
-          ),
-          _PresetMedTile(
-            title: 'Augmentin 625 Duo (Antibiotic)',
-            subtitle: 'Schedule H1 Warning (Red Border Box) · Rx Required',
-            badge: 'Schedule H1 🚨',
-            badgeColor: Colors.red,
-            onTap: _loadAugmentin625H1,
-          ),
-          _PresetMedTile(
-            title: 'Expired Allergy Medicine (Cetzine)',
-            subtitle: 'Past Expiry Date · Rule 65 Prohibited Consumption',
-            badge: 'Expired 🔴',
-            badgeColor: Colors.red,
-            onTap: _loadExpiredMedicine,
-          ),
-          _PresetMedTile(
-            title: 'Banned Fixed-Dose Combination',
-            subtitle: 'Nimesulide + Paracetamol · CDSCO Section 26A Banned FDC',
-            badge: 'Banned FDC ⛔',
-            badgeColor: Colors.red,
-            onTap: _loadBannedFdc,
-          ),
         ],
       ),
     );
@@ -359,54 +260,4 @@ class _MedicineActionTile extends StatelessWidget {
   }
 }
 
-class _PresetMedTile extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final String badge;
-  final Color badgeColor;
-  final VoidCallback onTap;
 
-  const _PresetMedTile({
-    required this.title,
-    required this.subtitle,
-    required this.badge,
-    required this.badgeColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-      ),
-      child: ListTile(
-        onTap: onTap,
-        title: Row(
-          children: [
-            Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: badgeColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                badge,
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: badgeColor),
-              ),
-            ),
-          ],
-        ),
-        subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-      ),
-    );
-  }
-}

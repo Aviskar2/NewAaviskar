@@ -3,11 +3,13 @@ import '../../core/legal/models/legal_analysis_result.dart';
 import '../../core/legal/models/legal_document_type.dart';
 import '../../core/legal/models/legal_finding.dart';
 import '../../core/legal/models/ocr_document.dart';
+import '../../models/scan_result_model.dart';
 import 'clause_extraction_service.dart';
 import 'document_anomaly_service.dart';
 import 'indian_law_rag_service.dart';
 import 'legal_document_classifier.dart';
 import 'legal_risk_engine.dart';
+import 'live_legal_update_service.dart';
 import 'local_legal_llm_service.dart';
 
 class LegalOrchestrator {
@@ -17,8 +19,10 @@ class LegalOrchestrator {
   final IndianLawRagService _ragService = IndianLawRagService();
   final LocalLegalLlmService _llmService = LocalLegalLlmService();
   final LegalRiskEngine _riskEngine = LegalRiskEngine();
+  final LiveLegalUpdateService _liveUpdateService = LiveLegalUpdateService();
 
   IndianLawRagService get ragService => _ragService;
+  LiveLegalUpdateService get liveUpdateService => _liveUpdateService;
 
   /// Analyzes a scanned OcrDocument through the complete Indian Legal Risk pipeline.
   Future<LegalAnalysisResult> analyze(
@@ -26,6 +30,10 @@ class LegalOrchestrator {
     LegalDocumentType? forcedType,
     bool enableAiEnhancement = true,
   }) async {
+    // 0. Ensure dynamic laws are loaded and auto-sync in background once every 24h
+    await _liveUpdateService.initialize();
+    _liveUpdateService.syncIfNeeded();
+
     // 1. Classification
     final classification = _classifier.classify(doc.rawText);
     final docType = forcedType ?? classification.type;
@@ -42,6 +50,15 @@ class LegalOrchestrator {
       try {
         aiEnhancement = await _llmService.analyze(doc.rawText, docType);
       } catch (_) {}
+    }
+
+    // Ingest any newly discovered dynamic statutory citations
+    if (aiEnhancement != null) {
+      for (final finding in aiEnhancement.aiDiscoveredFindings) {
+        for (final citation in finding.statutoryBasis) {
+          await _liveUpdateService.registerAndPersistNewLaw(citation);
+        }
+      }
     }
 
     // Merge Findings & Anomalies
@@ -122,6 +139,142 @@ class LegalOrchestrator {
       pages: [page],
       rawText: text,
       overallConfidence: 0.92,
+      scannedAt: DateTime.now(),
+    );
+  }
+
+  /// Creates an OcrDocument from multiple OCR results (from multi-photo capture or gallery images).
+  OcrDocument createDocumentFromOcrResults(List<OcrResult> results) {
+    if (results.isEmpty) {
+      return createDocumentFromText('');
+    }
+
+    final pages = <OcrPage>[];
+    final textBuffer = StringBuffer();
+
+    for (int pageIdx = 0; pageIdx < results.length; pageIdx++) {
+      final res = results[pageIdx];
+      if (textBuffer.isNotEmpty) textBuffer.writeln('\n');
+      textBuffer.writeln('--- Page ${pageIdx + 1} ---');
+      textBuffer.writeln(res.fullText);
+
+      final ocrLines = <OcrLine>[];
+      double maxX = 1080.0;
+      double maxY = 1920.0;
+      for (final block in res.blocks) {
+        final r = block.boundingBox;
+        if (r != null) {
+          if (r.right > maxX) maxX = r.right;
+          if (r.bottom > maxY) maxY = r.bottom;
+        }
+      }
+      final pageSize = Size(maxX, maxY);
+
+      for (int bIdx = 0; bIdx < res.blocks.length; bIdx++) {
+        final block = res.blocks[bIdx];
+        if (block.lineItems.isNotEmpty) {
+          for (int iIdx = 0; iIdx < block.lineItems.length; iIdx++) {
+            final item = block.lineItems[iIdx];
+            final rect = item.boundingBox ??
+                block.boundingBox ??
+                Rect.fromLTWH(50, (ocrLines.length * 40.0) + 50, 900, 35);
+            ocrLines.add(OcrLine(
+              text: item.text,
+              confidence: 0.94,
+              pageIndex: pageIdx,
+              boundingBox: OcrBoundingBox.fromRect(rect, pageSize: pageSize),
+            ));
+          }
+        } else {
+          for (int lIdx = 0; lIdx < block.lines.length; lIdx++) {
+            final line = block.lines[lIdx];
+            final rect = block.boundingBox ??
+                Rect.fromLTWH(50, (ocrLines.length * 40.0) + 50, 900, 35);
+            ocrLines.add(OcrLine(
+              text: line,
+              confidence: 0.94,
+              pageIndex: pageIdx,
+              boundingBox: OcrBoundingBox.fromRect(rect, pageSize: pageSize),
+            ));
+          }
+        }
+      }
+
+      pages.add(OcrPage(
+        pageIndex: pageIdx,
+        imagePath: res.imagePath.isNotEmpty ? res.imagePath : null,
+        pageSize: pageSize,
+        lines: ocrLines,
+        averageConfidence: 0.92,
+      ));
+    }
+
+    return OcrDocument(
+      pages: pages,
+      rawText: textBuffer.toString(),
+      overallConfidence: 0.92,
+      scannedAt: DateTime.now(),
+    );
+  }
+
+  /// Creates an OcrDocument from multiple text pages (e.g. extracted from multi-page PDF).
+  OcrDocument createDocumentFromTextPages(List<String> pageTexts, {List<String?>? imagePaths}) {
+    if (pageTexts.isEmpty) {
+      return createDocumentFromText('');
+    }
+
+    final pages = <OcrPage>[];
+    final textBuffer = StringBuffer();
+
+    for (int pageIdx = 0; pageIdx < pageTexts.length; pageIdx++) {
+      final text = pageTexts[pageIdx].trim();
+      if (textBuffer.isNotEmpty) textBuffer.writeln('\n');
+      textBuffer.writeln('--- Page ${pageIdx + 1} ---');
+      textBuffer.writeln(text);
+
+      final lines = text
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+
+      final ocrLines = <OcrLine>[];
+      final totalLines = lines.length.clamp(1, 1000);
+
+      for (int i = 0; i < lines.length; i++) {
+        final normTop = i / totalLines;
+        final normHeight = 1.0 / totalLines;
+
+        ocrLines.add(OcrLine(
+          text: lines[i],
+          confidence: 0.95,
+          pageIndex: pageIdx,
+          boundingBox: OcrBoundingBox(
+            left: 0.05,
+            top: normTop,
+            width: 0.90,
+            height: normHeight,
+          ),
+        ));
+      }
+
+      final imgPath = (imagePaths != null && pageIdx < imagePaths.length)
+          ? imagePaths[pageIdx]
+          : null;
+
+      pages.add(OcrPage(
+        pageIndex: pageIdx,
+        imagePath: imgPath,
+        pageSize: const Size(1080, 1920),
+        lines: ocrLines,
+        averageConfidence: 0.95,
+      ));
+    }
+
+    return OcrDocument(
+      pages: pages,
+      rawText: textBuffer.toString(),
+      overallConfidence: 0.95,
       scannedAt: DateTime.now(),
     );
   }

@@ -4,8 +4,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
+import '../config/openrouter_models.dart';
 import '../models/analysis_result.dart';
 import '../models/bill_model.dart';
+import 'gemini_fraud_service.dart';
 
 /// Result from AI enhancement containing enhanced bill and any AI-detected fraud/scam findings.
 class LlmBillResult {
@@ -19,16 +21,10 @@ class LlmBillResult {
 }
 
 class LlmBillService {
-  /// Active and reliable candidate vision & text models on OpenRouter (fast free models first)
-  static const List<String> _candidateModels = [
-    'google/gemini-2.0-flash-exp:free',
-    'google/gemini-2.0-flash:free',
-    'qwen/qwen-2.5-vl-72b-instruct:free',
-    'meta-llama/llama-3.2-11b-vision-instruct:free',
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'mistralai/mistral-7b-instruct:free',
-    'deepseek/deepseek-chat:free',
-  ];
+  final GeminiFraudService _geminiService = GeminiFraudService();
+
+  /// Live free models are discovered at runtime (vision-capable first when
+  /// analyzing a bill image); see [OpenRouterModelDirectory].
 
   /// Enhances deterministic bill parsing using LLM/Vision with fast fallback.
   /// Supports printed invoices as well as handwritten bills/slips/kirana parchi.
@@ -43,9 +39,28 @@ class LlmBillService {
       return LlmBillResult(bill: initialBill, aiFindings: []);
     }
 
-    if (ApiConfig.openRouterApiKey.isEmpty ||
-        ApiConfig.openRouterApiKey.contains('<YOUR_')) {
-      debugPrint('Skipping LLM enhancement: OpenRouter API key not configured.');
+    // 1. Prioritize Google Gemini AI for High-Precision Multimodal Fraud Detection
+    if (ApiConfig.geminiActive) {
+      try {
+        final geminiResult = await _geminiService.analyzeBillForFraud(
+          initialBill: initialBill,
+          rawOcrText: rawOcrText,
+          imagePath: imagePath,
+        );
+        if (geminiResult != null) {
+          debugPrint('Gemini AI Fraud Detection completed with ${geminiResult.modelUsed}');
+          return LlmBillResult(
+            bill: geminiResult.enhancedBill ?? initialBill,
+            aiFindings: geminiResult.findings,
+          );
+        }
+      } catch (e) {
+        debugPrint('Gemini AI Fraud Detection error: $e. Falling back to secondary models...');
+      }
+    }
+
+    if (!ApiConfig.aiActive) {
+      debugPrint('Skipping secondary LLM enhancement: OpenRouter API key not configured.');
       return LlmBillResult(bill: initialBill, aiFindings: []);
     }
 
@@ -59,10 +74,13 @@ class LlmBillService {
       }
     }
 
+    // Tight budget — deterministic fallback is fast, don't block the user.
+    final budget = base64Image != null ? 12 : 10;
     try {
       return await _tryModels(initialBill, rawOcrText, base64Image)
-          .timeout(const Duration(seconds: 10), onTimeout: () {
-        debugPrint('LLM enhancement timed out (10s limit). Proceeding with deterministic results.');
+          .timeout(Duration(seconds: budget), onTimeout: () {
+        debugPrint(
+            'LLM enhancement timed out (${budget}s limit). Proceeding with deterministic results.');
         return LlmBillResult(bill: initialBill, aiFindings: []);
       });
     } catch (e) {
@@ -76,10 +94,22 @@ class LlmBillService {
     String rawOcrText,
     String? base64Image,
   ) async {
-    for (final model in _candidateModels) {
+    // Text-only bills skip vision-only models entirely — those pools are
+    // separate and often congested while text models respond fine.
+    final candidates = base64Image != null
+        ? OpenRouterModelDirectory.visionCandidates()
+        : OpenRouterModelDirectory.textCandidates();
+    int attempt = 0;
+    for (final model in await candidates) {
+      if (attempt > 0) {
+        // Exponential backoff to avoid OpenRouter 429 rate limit spikes
+        final backoffMs = (400 * (1 << (attempt - 1))).clamp(400, 1500);
+        await Future.delayed(Duration(milliseconds: backoffMs));
+      }
+      attempt++;
       try {
         final result = await _callOpenRouter(model, rawOcrText, base64Image, initialBill)
-            .timeout(const Duration(seconds: 6));
+            .timeout(const Duration(seconds: 5));
         if (result != null) {
           return result;
         }
@@ -99,46 +129,51 @@ class LlmBillService {
     StructuredBill baseBill,
   ) async {
     final systemPrompt = '''
-You are an expert Indian Bill, Invoice, Receipt & Handwritten Slip Auditor.
-Your task is to analyze Indian bills — including computer-printed GST invoices, supermarket receipts, restaurant bills, petrol slips, as well as HANDWRITTEN bills/slips/kacha parchi from local kirana stores, medical shops, or restaurants.
+You are an expert Indian Bill, Invoice, Receipt & Handwritten Slip Auditor specializing in Indian GST law.
 
 CRITICAL INSTRUCTIONS:
-1. HANDWRITTEN BILLS & RECEIPTS:
-   - Carefully decipher handwriting (in English, Hindi, Hinglish, or regional terms).
-   - Accurately read handwritten item names, quantities, unit prices, and line amounts.
-   - For handwritten slips without explicit GST, extract item names, quantities, prices, and the handwritten sum/total.
-   - Check if the manual handwritten addition done by the shopkeeper is mathematically correct or has arithmetic errors.
 
-2. FINANCIAL SUMMARY & ARITHMETIC (EXTREME ACCURACY):
+1. FINANCIAL SUMMARY & ARITHMETIC (EXTREME ACCURACY):
    - "taxable_amount": Base amount before GST taxes. If prices are tax-inclusive (MRP), compute taxable base = (Gross - Discount) / (1 + total GST rate/100).
    - "grand_total": The EXACT final net payable invoice amount that the customer pays.
    - "discount_total": Any trade discount, coupon, or savings deducted.
-   - Cross-verify math: grand_total ≈ taxable_amount + cgst_amount + sgst_amount + igst_amount + cess_amount + charges - discount ± round_off.
+   - CROSS-VERIFY MATH: grand_total MUST EQUAL taxable_amount + cgst_amount + sgst_amount + igst_amount + cess_amount + charges - discount ± round_off. If your numbers don't add up, recalculate until they do.
+   - CRITICAL: When reading GST amounts from the bill, use EXACTLY what is printed. Do NOT round or alter numbers. If bill says CGST 2.5% = 11.75, report exactly 2.5% and 11.75.
 
-3. ACCURATE GST BREAKDOWN:
-   - "cgst_rate" / "cgst_amount": Central GST (e.g. 2.5%, 6%, 9%, 14%).
-   - "sgst_rate" / "sgst_amount": State GST / UTGST (must equal CGST for intra-state).
-   - "igst_rate" / "igst_amount": Integrated GST (for inter-state supply).
-   - "cess_amount": Compensation cess if applicable.
-   - In multi-slab bills (e.g. items at 5% and items at 18%), compute total CGST and total SGST accurately across all items.
+2. ACCURATE GST BREAKDOWN (INDIAN GST LAW):
+   - Standard GST slabs in India: 0%, 0.25%, 0.5%, 1%, 1.5%, 3%, 5%, 6%, 9%, 12%, 14%, 18%, 28%
+   - "cgst_rate" / "cgst_amount": Central GST. Rate MUST be one of the standard slabs above.
+   - "sgst_rate" / "sgst_amount": State GST. For intra-state: SGST rate = CGST rate, SGST amount = CGST amount.
+   - "igst_rate" / "igst_amount": Integrated GST (inter-state only). IGST rate = CGST + SGST combined.
+   - "cess_amount": Compensation cess if applicable (usually on luxury/sin goods).
+   - NEVER report a GST rate like 2.58%, 6.12%, 18.03% etc. Rates MUST be standard slab values.
+   - If the bill shows CGST@2.5% and SGST@2.5%, the total GST is 5%.
+   - If the bill shows IGST@5%, the total GST is 5% (inter-state).
+
+3. HANDWRITTEN BILLS & RECEIPTS:
+   - Carefully decipher handwriting (in English, Hindi, Hinglish, or regional terms).
+   - Accurately read handwritten item names, quantities, unit prices, and line amounts.
+   - Check if the manual handwritten addition done by the shopkeeper is mathematically correct.
 
 4. ITEMS & PRODUCTS:
    - Clean up garbled OCR / handwriting to clear product names.
    - Extract exact quantity, unit price, and line total for each item.
 
-5. BILL TYPE & FRAUD AUDIT:
-   - Detect correct bill_type ("supermarket", "restaurant", "hotel", "pharmacy", "fuel", "electronics", "shopping", "ecommerce", "service", "gstInvoice", "unknown").
-   - Flag illegal mandatory service charges, wrong GST rates, invalid GSTIN format, or overcharging math errors under Indian Consumer Law.
+5. BILL TYPE & LEGAL COMPLIANCE (INDIAN CONSUMER LAW):
+   - Detect correct bill_type.
+   - SERVICE CHARGE: Under CCPA guidelines (2022), restaurants/hotels CANNOT impose mandatory service charge. It must be optional. If found, flag as "verify" severity with explanation.
+   - GST ON SERVICE CHARGE: If GST is charged on service charge amount, flag as suspicious.
+   - WRONG GST RATE: If any item has a GST rate that doesn't match standard Indian slabs, flag it.
+   - OVERCHARGING: If printed total > calculated total by more than ₹2, flag as overcharge.
 
 6. ADVANCED FRAUD DETECTION:
-   - "vendor_legitimacy_check": Verify if the seller name seems consistent with the GSTIN (state code should match address region). Flag if GSTIN state code doesn't match address.
-   - "item_category_mismatch": Detect if items don't match the bill type (e.g., electronics items on a restaurant bill, clothing items on a pharmacy bill).
-   - "hidden_charges_analysis": Look for charges in the image that may not be captured by OCR — subtle fees, small-print surcharges, or charges buried in the layout.
-   - "handwriting_consistency": For handwritten bills, check if the handwriting style is consistent throughout (same pen, same hand) or if amounts look altered.
-   - "progressive_fraud": Note if the bill pattern seems to be gradually increasing amounts compared to what would be normal for this vendor type.
-   - "duplicate_invoice_check": Flag if the invoice number format seems unusual or if there are signs of invoice number tampering.
+   - Vendor legitimacy: GSTIN state code vs address region.
+   - Item category mismatch: Items not matching bill type.
+   - Hidden charges: Subtle fees in small print.
+   - Handwriting consistency: Same pen/hand throughout.
+   - Duplicate invoice check.
 
-Respond strictly with ONLY valid raw JSON in the following schema (no markdown fences, no explanatory text):
+Respond strictly with ONLY valid raw JSON (no markdown, no explanation):
 {
   "seller_name": "Sharma General Store",
   "seller_address": "...",
@@ -194,11 +229,14 @@ Respond strictly with ONLY valid raw JSON in the following schema (no markdown f
   "hidden_charges_detected": false,
   "handwriting_consistent": true,
   "invoice_number_suspicious": false,
-  "ai_summary": "Summary of audit and financial breakdown"
+  "ai_summary": "Simple summary of what was found"
 }
 ''';
 
     final uri = Uri.parse('${ApiConfig.openRouterBaseUrl}/chat/completions');
+
+    final sanitizedPrompt = systemPrompt.replaceAll('\u00A0', ' ');
+    final sanitizedOcr = rawOcrText.replaceAll('\u00A0', ' ');
 
     // Build message content supporting both vision and text
     dynamic userMessageContent;
@@ -206,7 +244,7 @@ Respond strictly with ONLY valid raw JSON in the following schema (no markdown f
       userMessageContent = [
         {
           'type': 'text',
-          'text': 'Analyze this Indian bill (it may be printed or a handwritten slip/parchi). Decipher all handwriting and text, calculate financial totals, GST breakdown, and item details with high accuracy.\n\nRaw OCR text (if any):\n$rawOcrText',
+          'text': 'Analyze this Indian bill (it may be printed or a handwritten slip/parchi). Decipher all handwriting and text, calculate financial totals, GST breakdown, and item details with high accuracy.\n\nRaw OCR text (if any):\n$sanitizedOcr',
         },
         {
           'type': 'image_url',
@@ -216,29 +254,38 @@ Respond strictly with ONLY valid raw JSON in the following schema (no markdown f
         },
       ];
     } else {
-      userMessageContent = 'Here is the raw OCR text of the bill:\n\n$rawOcrText';
+      userMessageContent = 'Here is the raw OCR text of the bill:\n\n$sanitizedOcr';
     }
+
+    final jsonPayload = jsonEncode({
+      'model': model,
+      'temperature': 0.1,
+      'messages': [
+        {'role': 'system', 'content': sanitizedPrompt},
+        {'role': 'user', 'content': userMessageContent},
+      ],
+    }).replaceAll('\u00A0', ' ');
 
     final response = await http.post(
       uri,
       headers: {
-        'Authorization': 'Bearer ${ApiConfig.openRouterApiKey}',
+        'Authorization': 'Bearer ${ApiConfig.effectiveApiKey}',
         'HTTP-Referer': ApiConfig.appSiteUrl,
         'X-Title': ApiConfig.appName,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
       },
-      body: jsonEncode({
-        'model': model,
-        'temperature': 0.1,
-        'messages': [
-          {'role': 'system', 'content': systemPrompt},
-          {'role': 'user', 'content': userMessageContent},
-        ],
-      }),
-    ).timeout(const Duration(seconds: 6));
+      body: utf8.encode(jsonPayload),
+    ).timeout(const Duration(seconds: 5));
 
     if (response.statusCode != 200) {
       debugPrint('OpenRouter response code ${response.statusCode}: ${response.body}');
+      // Gated or retired models will never succeed — skip them next time.
+      if (response.statusCode == 403 || response.statusCode == 404) {
+        OpenRouterModelDirectory.blockModel(model);
+      } else if (response.statusCode == 429) {
+        // Shared free pool congested — back off briefly, try healthy models.
+        OpenRouterModelDirectory.coolDown(model);
+      }
       return null;
     }
 
@@ -318,16 +365,20 @@ Respond strictly with ONLY valid raw JSON in the following schema (no markdown f
       }
     }
 
-    // Taxes
+    // Taxes — snap rates to standard Indian GST slabs
+    final rawCgstRate = _toDouble(json['cgst_rate']);
+    final rawSgstRate = _toDouble(json['sgst_rate']);
+    final rawIgstRate = _toDouble(json['igst_rate']);
+
     final taxes = BillTaxSection(
       subtotal: _toDouble(json['taxable_amount']) ?? baseBill.taxes.subtotal,
       cgstAmount: _toDouble(json['cgst_amount']) ?? baseBill.taxes.cgstAmount,
       sgstAmount: _toDouble(json['sgst_amount']) ?? baseBill.taxes.sgstAmount,
       igstAmount: _toDouble(json['igst_amount']) ?? baseBill.taxes.igstAmount,
       cessAmount: _toDouble(json['cess_amount']) ?? baseBill.taxes.cessAmount,
-      cgstRate: _toDouble(json['cgst_rate']) ?? baseBill.taxes.cgstRate,
-      sgstRate: _toDouble(json['sgst_rate']) ?? baseBill.taxes.sgstRate,
-      igstRate: _toDouble(json['igst_rate']) ?? baseBill.taxes.igstRate,
+      cgstRate: rawCgstRate != null ? _snapGstRate(rawCgstRate) : baseBill.taxes.cgstRate,
+      sgstRate: rawSgstRate != null ? _snapGstRate(rawSgstRate) : baseBill.taxes.sgstRate,
+      igstRate: rawIgstRate != null ? _snapGstRate(rawIgstRate) : baseBill.taxes.igstRate,
       roundOff: _toDouble(json['round_off']) ?? baseBill.taxes.roundOff,
     );
 
@@ -496,6 +547,22 @@ Respond strictly with ONLY valid raw JSON in the following schema (no markdown f
     }
 
     return LlmBillResult(bill: enhancedBill, aiFindings: aiFindings);
+  }
+
+  /// Snap a GST rate to the nearest standard Indian GST slab.
+  /// Returns the standard slab if within 0.6%, otherwise returns original.
+  static double _snapGstRate(double rate) {
+    const slabs = [0.0, 0.25, 0.5, 1.0, 1.5, 3.0, 5.0, 6.0, 9.0, 12.0, 14.0, 18.0, 28.0];
+    double best = rate;
+    double bestDist = 999;
+    for (final slab in slabs) {
+      final dist = (rate - slab).abs();
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = slab;
+      }
+    }
+    return bestDist <= 0.6 ? best : rate;
   }
 
   double? _toDouble(dynamic v) {

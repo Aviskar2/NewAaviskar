@@ -1,13 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:archive/archive.dart';
 import '../../services/translation_service.dart';
 import '../../services/ocr_service.dart';
 import '../../services/scan_history_service.dart';
 import '../../widgets/language_picker_sheet.dart';
 import '../../models/scan_result_model.dart';
 import 'image_overlay_translation_screen.dart';
+import 'document_translation_screen.dart';
 
 /// Full translation screen powered by Google ML Kit on-device translation
 /// with automatic high-speed cloud fallback so translation never hangs.
@@ -122,11 +126,14 @@ class _TranslationScreenState extends State<TranslationScreen> {
     }
   }
 
-  /// Pick PDF or image file and extract text via OCR
+  /// Pick document (image, PDF, DOCX, TXT) and extract text
   Future<void> _pickAndExtract() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'pdf'],
+      allowedExtensions: [
+        'jpg', 'jpeg', 'png', 'webp', 'bmp',
+        'pdf', 'docx', 'doc', 'txt',
+      ],
       allowMultiple: false,
     );
     if (result == null || result.files.isEmpty) return;
@@ -136,17 +143,6 @@ class _TranslationScreenState extends State<TranslationScreen> {
 
     final ext = (file.extension ?? '').toLowerCase();
 
-    if (ext == 'pdf') {
-      // PDFs: notify user to convert to image
-      setState(() {
-        _errorMessage = 'PDF files cannot be directly translated. '  
-            'Please export/screenshot the PDF as an image (JPG/PNG) and retry. '
-            'This is a limitation of on-device OCR.';
-        _inputText = '';
-      });
-      return;
-    }
-
     setState(() {
       _isExtractingText = true;
       _errorMessage = null;
@@ -154,12 +150,38 @@ class _TranslationScreenState extends State<TranslationScreen> {
     });
 
     try {
-      final ocr = await _ocrService.recognizeFromPath(path);
-      await widget.historyService.addOcr(ocr);
+      String extractedText = '';
+
+      if (ext == 'pdf') {
+        extractedText = await _extractTextFromPdf(path);
+      } else if (ext == 'docx' || ext == 'doc') {
+        extractedText = await _extractTextFromDocx(path);
+      } else if (ext == 'txt') {
+        extractedText = await File(path).readAsString();
+      } else {
+        // Image: use OCR
+        final ocr = await _ocrService.recognizeFromPath(path);
+        await widget.historyService.addOcr(ocr);
+        extractedText = ocr.fullText;
+        if (mounted) {
+          setState(() {
+            _lastOcrResult = ocr;
+          });
+        }
+      }
+
       if (!mounted) return;
+
+      if (extractedText.trim().isEmpty) {
+        setState(() {
+          _isExtractingText = false;
+          _errorMessage = 'No readable text found in this document.';
+        });
+        return;
+      }
+
       setState(() {
-        _inputText = ocr.fullText;
-        _lastOcrResult = ocr;
+        _inputText = extractedText;
         _isExtractingText = false;
       });
       _translate();
@@ -170,6 +192,46 @@ class _TranslationScreenState extends State<TranslationScreen> {
           _errorMessage = 'Failed to extract text: $e';
         });
       }
+    }
+  }
+
+  /// Extract text from PDF using syncfusion_flutter_pdf
+  Future<String> _extractTextFromPdf(String path) async {
+    try {
+      final bytes = await File(path).readAsBytes();
+      final PdfDocument document = PdfDocument(inputBytes: bytes);
+      final PdfTextExtractor extractor = PdfTextExtractor(document);
+      final String text = extractor.extractText();
+      document.dispose();
+      return text;
+    } catch (e) {
+      throw Exception('PDF text extraction failed: $e');
+    }
+  }
+
+  /// Extract text from DOCX (Office Open XML) by parsing the XML content
+  Future<String> _extractTextFromDocx(String path) async {
+    try {
+      final bytes = await File(path).readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+
+      // Find the main document XML file
+      final docFile = archive.files.firstWhere(
+        (f) => f.name == 'word/document.xml',
+        orElse: () => archive.files.first,
+      );
+
+      final xmlContent = String.fromCharCodes(docFile.content as List<int>);
+
+      // Extract text from XML tags (strip XML tags, keep text content)
+      final textContent = xmlContent
+          .replaceAll(RegExp(r'<[^>]+>'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+
+      return textContent;
+    } catch (e) {
+      throw Exception('DOCX text extraction failed: $e');
     }
   }
 
@@ -212,7 +274,10 @@ class _TranslationScreenState extends State<TranslationScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ImageOverlayTranslationScreen(ocrResult: ocrResult),
+        builder: (_) => ImageOverlayTranslationScreen(
+          ocrResult: ocrResult,
+          ocrService: _ocrService,
+        ),
       ),
     );
   }
@@ -239,8 +304,8 @@ class _TranslationScreenState extends State<TranslationScreen> {
                 ListTile(
                   leading: const Icon(Icons.photo_library_outlined,
                       color: Color(0xFF2563EB)),
-                  title: const Text('Pick image from gallery'),
-                  subtitle: const Text('JPG, PNG, WEBP supported'),
+                  title: const Text('Image (JPG, PNG, WEBP)'),
+                  subtitle: const Text('Text extracted via OCR'),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                   onTap: () {
@@ -262,9 +327,28 @@ class _TranslationScreenState extends State<TranslationScreen> {
                 ListTile(
                   leading: const Icon(Icons.picture_as_pdf_outlined,
                       color: Color(0xFFFF4081)),
-                  title: const Text('PDF file (text extraction)'),
-                  subtitle: const Text(
-                      'Select PDF — text will be extracted if embeddable'),
+                  title: const Text('PDF / Word Document Translation'),
+                  subtitle: const Text('Structured page translation & PDF export'),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DocumentTranslationScreen(
+                          historyService: widget.historyService,
+                          ocrService: _ocrService,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.description_outlined,
+                      color: Color(0xFF16A34A)),
+                  title: const Text('Import Text / DOCX File'),
+                  subtitle: const Text('Extracts text from files into text translator'),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                   onTap: () {
