@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_ai/services/product_classifier.dart';
+import 'package:scan_sure/services/product_classifier.dart';
 
 void main() {
   final classifier = ProductClassifier();

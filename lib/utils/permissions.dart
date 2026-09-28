@@ -13,7 +13,7 @@ class PermissionsUtil {
         context,
         title: 'Camera Permission Required',
         message:
-            'NyayaSathi needs camera access to scan QR codes, barcodes, and capture images for OCR. '
+            'ScanSure needs camera access to scan QR codes, barcodes, and capture images for OCR. '
             'Please enable it in app settings.',
       );
     }
@@ -36,7 +36,7 @@ class PermissionsUtil {
         context,
         title: 'Storage Permission Required',
         message:
-            'NyayaSathi needs access to your photos and files to process images for OCR and barcode scanning. '
+            'ScanSure needs access to your photos and files to process images for OCR and barcode scanning. '
             'Please enable it in app settings.',
       );
     }

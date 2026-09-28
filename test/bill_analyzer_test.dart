@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_ai/services/bill_parser_service.dart';
-import 'package:aura_ai/models/bill_model.dart';
-import 'package:aura_ai/models/analysis_result.dart';
-import 'package:aura_ai/services/government_source_service.dart';
-import 'package:aura_ai/services/gst_rule_engine.dart';
-import 'package:aura_ai/services/charge_analyzer.dart';
-import 'package:aura_ai/services/pattern_fraud_detector.dart';
-import 'package:aura_ai/services/ml_fraud_detector.dart';
+import 'package:scan_sure/services/bill_parser_service.dart';
+import 'package:scan_sure/models/bill_model.dart';
+import 'package:scan_sure/models/analysis_result.dart';
+import 'package:scan_sure/services/government_source_service.dart';
+import 'package:scan_sure/services/gst_rule_engine.dart';
+import 'package:scan_sure/services/charge_analyzer.dart';
+import 'package:scan_sure/services/pattern_fraud_detector.dart';
+import 'package:scan_sure/services/ml_fraud_detector.dart';
 import 'synthetic_bill_generator.dart';
 
 void main() {

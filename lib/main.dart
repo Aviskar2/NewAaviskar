@@ -6,24 +6,24 @@ import 'screens/main_navigation.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppSettings.load();
-  runApp(const AuraApp());
+  runApp(const ScanSureApp());
 }
 
-class AuraApp extends StatefulWidget {
-  const AuraApp({Key? key}) : super(key: key);
+class ScanSureApp extends StatefulWidget {
+  const ScanSureApp({Key? key}) : super(key: key);
 
   @override
-  State<AuraApp> createState() => _AuraAppState();
+  State<ScanSureApp> createState() => _ScanSureAppState();
 }
 
-class _AuraAppState extends State<AuraApp> {
+class _ScanSureAppState extends State<ScanSureApp> {
   // Theme state: true = Default Light Blue Theme, false = Dark Vibrant Theme
   bool _isLightMode = true;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Aura AI',
+      title: 'ScanSure',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightBlueTheme,
       darkTheme: AppTheme.darkVibrantTheme,

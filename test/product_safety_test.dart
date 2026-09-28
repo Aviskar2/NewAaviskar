@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_ai/models/product_safety_model.dart';
-import 'package:aura_ai/services/product_safety/barcode_gs1_service.dart';
-import 'package:aura_ai/services/product_safety/expiry_extractor_service.dart';
-import 'package:aura_ai/services/product_safety/fssai_validator_service.dart';
-import 'package:aura_ai/services/product_safety/nutritional_audit_service.dart';
-import 'package:aura_ai/services/product_safety/product_safety_orchestrator.dart';
+import 'package:scan_sure/models/product_safety_model.dart';
+import 'package:scan_sure/services/product_safety/barcode_gs1_service.dart';
+import 'package:scan_sure/services/product_safety/expiry_extractor_service.dart';
+import 'package:scan_sure/services/product_safety/fssai_validator_service.dart';
+import 'package:scan_sure/services/product_safety/nutritional_audit_service.dart';
+import 'package:scan_sure/services/product_safety/product_safety_orchestrator.dart';
 
 void main() {
   group('Barcode & GS1 Service', () {

@@ -684,7 +684,7 @@ class _DocumentTranslationScreenState extends State<DocumentTranslationScreen>
         // Draw bottom footer
         final footerPainter = TextPainter(
           text: TextSpan(
-            text: 'NyayaSathi AI Document Translator • Verified',
+            text: 'ScanSure Document Translator • Verified',
             style: const TextStyle(
               fontSize: 8.5 * scale,
               color: Color(0xFF94A3B8),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'home_dashboard_screen.dart';
 import 'history_screen.dart';
-import 'updates_screen.dart';
 import 'settings_screen.dart';
 import 'scanner/scanner_hub_screen.dart';
 import 'scanner/universal_product_entry_screen.dart';
@@ -90,10 +89,10 @@ class MainNavigationState extends State<MainNavigation> {
     super.initState();
     // Load persisted scan history
     _scanHistoryService.load();
-    // Welcoming greeting message introducing NyayaSathi AI and its core safety features
+    // Welcoming greeting message introducing ScanSure and its core safety features
     activeMessages.add({
       'isUser': false,
-      'text': 'Namaste! I am NyayaSathi AI \u{1F1EE}\u{1F1F3} — your Citizen Legal, Financial & Consumer Safety Assistant.\n\n'
+      'text': 'Namaste! I am ScanSure \u{1F1EE}\u{1F1F3} — your Citizen Legal, Financial & Consumer Safety Assistant.\n\n'
           'Here is what I can do for you:\n'
           '• \u2696\uFE0F Legal Risk: Scan rental agreements, loans & contracts for scam clauses & unfair terms\n'
           '• \u{1F9FE} Bill & GST: Audit restaurant & grocery bills for illegal service charges & tax errors\n'
@@ -137,7 +136,7 @@ class MainNavigationState extends State<MainNavigation> {
         'type': 'text',
       });
       isTyping = true;
-      typingStatus = 'NyayaSathi is analyzing';
+      typingStatus = 'ScanSure is analyzing';
     });
 
     _simulateAiReply(userMessage);
@@ -474,12 +473,6 @@ class MainNavigationState extends State<MainNavigation> {
         onLoadChat: loadHistoryChat,
         scanHistoryService: _scanHistoryService,
       ),
-      UpdatesScreen(
-        key: const ValueKey('updates_tab'),
-        onTryOcr: () {
-          startChatWithMessage("I want to try the real-time OCR vision");
-        },
-      ),
       SettingsScreen(
         key: const ValueKey('settings_tab'),
         isLightMode: widget.isLightMode,
@@ -532,8 +525,7 @@ class MainNavigationState extends State<MainNavigation> {
               children: [
                 _buildNavItem(0, Icons.home_outlined, Icons.home_rounded, 'Home'),
                 _buildNavItem(1, Icons.history_rounded, Icons.history_rounded, 'History'),
-                _buildNavItem(2, Icons.notifications_none_rounded, Icons.notifications_rounded, 'Updates'),
-                _buildNavItem(3, Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
+                _buildNavItem(2, Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
               ],
             ),
           ),

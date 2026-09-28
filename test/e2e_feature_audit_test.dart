@@ -3,16 +3,16 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:aura_ai/config/api_config.dart';
-import 'package:aura_ai/config/app_settings.dart';
-import 'package:aura_ai/models/scan_result_model.dart';
-import 'package:aura_ai/services/bill_analysis_orchestrator.dart';
-import 'package:aura_ai/services/legal/legal_orchestrator.dart';
-import 'package:aura_ai/services/medicine_safety/medicine_safety_orchestrator.dart';
-import 'package:aura_ai/services/product_safety/product_safety_orchestrator.dart';
-import 'package:aura_ai/models/product_safety_model.dart';
-import 'package:aura_ai/models/analysis_result.dart';
-import 'package:aura_ai/core/legal/models/legal_finding.dart';
+import 'package:scan_sure/config/api_config.dart';
+import 'package:scan_sure/config/app_settings.dart';
+import 'package:scan_sure/models/scan_result_model.dart';
+import 'package:scan_sure/services/bill_analysis_orchestrator.dart';
+import 'package:scan_sure/services/legal/legal_orchestrator.dart';
+import 'package:scan_sure/services/medicine_safety/medicine_safety_orchestrator.dart';
+import 'package:scan_sure/services/product_safety/product_safety_orchestrator.dart';
+import 'package:scan_sure/models/product_safety_model.dart';
+import 'package:scan_sure/models/analysis_result.dart';
+import 'package:scan_sure/core/legal/models/legal_finding.dart';
 
 void main() {
   setUpAll(() {

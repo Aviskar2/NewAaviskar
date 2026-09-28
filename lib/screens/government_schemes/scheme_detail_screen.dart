@@ -459,7 +459,7 @@ ${scheme.documentsRequired.join(', ')}
 Apply: ${scheme.applyUrl}
 Helpline: ${scheme.helpline}
 
-Shared from Aura AI - Government Schemes Finder
+Shared from ScanSure - Government Schemes Finder
 ''';
 
     // Copy to clipboard as share alternative

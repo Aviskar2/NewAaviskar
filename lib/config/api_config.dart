@@ -36,8 +36,8 @@ class ApiConfig {
       AppSettings.hasApiKey ? AppSettings.openRouterApiKey : openRouterApiKey;
 
   /// Site identification for OpenRouter
-  static const String appSiteUrl = 'https://aura-ai.app';
-  static const String appName = 'Aura AI Universal Safety Engine';
+  static const String appSiteUrl = 'https://scansure.app';
+  static const String appName = 'ScanSure Universal Safety Engine';
 
   // ─── Google Gemini AI Configuration ──────────────────────────────────────
   /// Dedicated Google Gemini API key for real-time Fraud & Scam Detection.

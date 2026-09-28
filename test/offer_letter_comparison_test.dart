@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_ai/core/legal/constants/sample_offer_letters.dart';
-import 'package:aura_ai/core/legal/models/offer_letter_models.dart';
-import 'package:aura_ai/screens/legal_analyzer/offer_letter_comparison_screen.dart';
-import 'package:aura_ai/screens/legal_analyzer/offer_letter_result_screen.dart';
-import 'package:aura_ai/services/legal/offer_letter_analyzer_service.dart';
-import 'package:aura_ai/services/ocr_service.dart';
+import 'package:scan_sure/core/legal/constants/sample_offer_letters.dart';
+import 'package:scan_sure/core/legal/models/offer_letter_models.dart';
+import 'package:scan_sure/screens/legal_analyzer/offer_letter_comparison_screen.dart';
+import 'package:scan_sure/screens/legal_analyzer/offer_letter_result_screen.dart';
+import 'package:scan_sure/services/legal/offer_letter_analyzer_service.dart';
+import 'package:scan_sure/services/ocr_service.dart';
 
 void main() {
   group('Offer Letter Comparison Engine Tests', () {

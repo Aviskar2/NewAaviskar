@@ -66,7 +66,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           },
         ),
         title: Text(
-          'Aura AI',
+          'ScanSure',
           style: theme.textTheme.titleLarge?.copyWith(
             color: theme.colorScheme.primary,
             fontWeight: FontWeight.bold,

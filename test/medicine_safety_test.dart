@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_ai/models/medicine_safety_model.dart';
-import 'package:aura_ai/services/medicine_safety/drug_license_service.dart';
-import 'package:aura_ai/services/medicine_safety/drug_schedule_service.dart';
-import 'package:aura_ai/services/medicine_safety/jan_aushadhi_service.dart';
-import 'package:aura_ai/services/medicine_safety/medicine_safety_orchestrator.dart';
+import 'package:scan_sure/models/medicine_safety_model.dart';
+import 'package:scan_sure/services/medicine_safety/drug_license_service.dart';
+import 'package:scan_sure/services/medicine_safety/drug_schedule_service.dart';
+import 'package:scan_sure/services/medicine_safety/jan_aushadhi_service.dart';
+import 'package:scan_sure/services/medicine_safety/medicine_safety_orchestrator.dart';
 
 void main() {
   group('Drug Manufacturing License Service', () {

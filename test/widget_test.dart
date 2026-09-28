@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_ai/main.dart';
+import 'package:scan_sure/main.dart';
 
 void main() {
-  testWidgets('NyayaSathi AI Home Screen displays safety tools and header', (WidgetTester tester) async {
+  testWidgets('ScanSure Home Screen displays safety tools and header', (WidgetTester tester) async {
     // Build app
-    await tester.pumpWidget(const AuraApp());
+    await tester.pumpWidget(const ScanSureApp());
     await tester.pumpAndSettle();
 
     // Verify initial header and safety pillar buttons
-    expect(find.text('NyayaSathi AI'), findsOneWidget);
+    expect(find.text('ScanSure'), findsOneWidget);
     expect(find.text('Features'), findsOneWidget);
     expect(find.text('Legal Risk'), findsWidgets);
     expect(find.text('Bill & GST'), findsWidgets);
@@ -17,7 +17,7 @@ void main() {
   });
 
   testWidgets('Tapping Bill & GST card opens Bill Analyzer screen', (WidgetTester tester) async {
-    await tester.pumpWidget(const AuraApp());
+    await tester.pumpWidget(const ScanSureApp());
     await tester.pumpAndSettle();
 
     // Tap on Bill & GST card

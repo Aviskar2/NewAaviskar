@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_ai/config/api_config.dart';
-import 'package:aura_ai/config/app_settings.dart';
-import 'package:aura_ai/models/bill_model.dart';
-import 'package:aura_ai/services/gemini_fraud_service.dart';
+import 'package:scan_sure/config/api_config.dart';
+import 'package:scan_sure/config/app_settings.dart';
+import 'package:scan_sure/models/bill_model.dart';
+import 'package:scan_sure/services/gemini_fraud_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

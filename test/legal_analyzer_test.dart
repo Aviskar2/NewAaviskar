@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:aura_ai/core/legal/constants/indian_acts_database.dart';
-import 'package:aura_ai/core/legal/constants/sample_legal_documents.dart';
-import 'package:aura_ai/widgets/legal_analyzer/highlighted_document_paper.dart';
-import 'package:aura_ai/core/legal/models/legal_clause.dart';
-import 'package:aura_ai/core/legal/models/legal_document_type.dart';
-import 'package:aura_ai/core/legal/models/legal_finding.dart';
-import 'package:aura_ai/services/legal/clause_extraction_service.dart';
-import 'package:aura_ai/services/legal/document_anomaly_service.dart';
-import 'package:aura_ai/services/legal/indian_law_rag_service.dart';
-import 'package:aura_ai/services/legal/legal_document_classifier.dart';
-import 'package:aura_ai/services/legal/legal_orchestrator.dart';
-import 'package:aura_ai/services/legal/legal_risk_engine.dart';
-import 'package:aura_ai/services/legal/live_legal_update_service.dart';
+import 'package:scan_sure/core/legal/constants/indian_acts_database.dart';
+import 'package:scan_sure/core/legal/constants/sample_legal_documents.dart';
+import 'package:scan_sure/widgets/legal_analyzer/highlighted_document_paper.dart';
+import 'package:scan_sure/core/legal/models/legal_clause.dart';
+import 'package:scan_sure/core/legal/models/legal_document_type.dart';
+import 'package:scan_sure/core/legal/models/legal_finding.dart';
+import 'package:scan_sure/services/legal/clause_extraction_service.dart';
+import 'package:scan_sure/services/legal/document_anomaly_service.dart';
+import 'package:scan_sure/services/legal/indian_law_rag_service.dart';
+import 'package:scan_sure/services/legal/legal_document_classifier.dart';
+import 'package:scan_sure/services/legal/legal_orchestrator.dart';
+import 'package:scan_sure/services/legal/legal_risk_engine.dart';
+import 'package:scan_sure/services/legal/live_legal_update_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

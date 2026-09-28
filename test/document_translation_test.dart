@@ -1,11 +1,11 @@
-import 'dart:io';
+
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:archive/archive.dart';
-import 'package:aura_ai/services/translation_service.dart';
+import 'package:scan_sure/services/translation_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

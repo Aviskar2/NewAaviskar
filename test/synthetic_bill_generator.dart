@@ -1,7 +1,7 @@
 /// Synthetic bill generator for testing fraud detection.
 /// Creates test bills with known fraud patterns to verify each detection rule.
 
-import 'package:aura_ai/models/bill_model.dart';
+import 'package:scan_sure/models/bill_model.dart';
 
 enum FraudPattern {
   cgstSgstMismatch,
