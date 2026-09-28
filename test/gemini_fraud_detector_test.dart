@@ -13,7 +13,7 @@ void main() {
     test('Gemini API Key and Endpoint is configured and active', () async {
       await AppSettings.setGeminiApiKey('AIzaSyTestMockGeminiApiKey12345');
       expect(ApiConfig.hasGeminiKey, isTrue);
-      expect(ApiConfig.geminiModel, 'gemini-3.6-flash');
+      expect(ApiConfig.geminiModel, 'gemini-3.5-flash');
       expect(ApiConfig.effectiveGeminiApiKey, 'AIzaSyTestMockGeminiApiKey12345');
       expect(AppSettings.maskedGeminiApiKey, contains('AIzaS'));
       await AppSettings.setGeminiApiKey('');

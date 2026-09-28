@@ -43,6 +43,9 @@ class OpenRouterModelDirectory {
 
   /// Curated fallbacks (verified live Aug 2026). Used only if discovery fails.
   static const List<String> fallbackVisionModels = [
+    'z-ai/glm-5.3-flash',
+    'meta/llama-3.2-11b-vision-instruct',
+    'mimo-v2.6-flash-free',
     'google/gemma-4-31b-it:free',
     'minimax/minimax-m3:free',
     'thinkingmachines/inkling-small:free',
@@ -51,6 +54,10 @@ class OpenRouterModelDirectory {
   ];
 
   static const List<String> fallbackTextModels = [
+    'z-ai/glm-5.3-flash',
+    'meta/llama-3.2-11b-vision-instruct',
+    'nvidia/llama-3.1-nemotron-70b-instruct',
+    'mimo-v2.6-flash-free',
     'z-ai/glm-5.2:free',
     'nvidia/nemotron-3-super-120b-a12b:free',
     'google/gemma-4-31b-it:free',
@@ -108,7 +115,13 @@ class OpenRouterModelDirectory {
 
   static Future<void> _discover() async {
     final uri = Uri.parse('${ApiConfig.openRouterBaseUrl}/models');
-    final response = await http.get(uri).timeout(const Duration(seconds: 5));
+    final response = await http.get(
+      uri,
+      headers: {
+        if (ApiConfig.effectiveApiKey.isNotEmpty)
+          'Authorization': 'Bearer ${ApiConfig.effectiveApiKey}',
+      },
+    ).timeout(const Duration(seconds: 5));
     if (response.statusCode != 200) return;
 
     final decoded = jsonDecode(response.body);
@@ -118,13 +131,18 @@ class OpenRouterModelDirectory {
 
     final vision = <String>[];
     final text = <String>[];
+    final isNim = ApiConfig.effectiveApiKey.startsWith('nvapi-');
     for (final m in models) {
       if (m is! Map) continue;
       final id = m['id']?.toString();
-      if (id == null || !id.endsWith(':free')) continue;
+      if (id == null) continue;
+      final isFree = id.endsWith(':free') || id.endsWith('-free');
+      if (!isNim && !isFree) continue;
       final arch = m['architecture'];
       final input = arch is Map ? arch['input_modalities'] : null;
-      final supportsImage = input is List && input.contains('image');
+      final supportsImage = (input is List && input.contains('image')) ||
+          id.contains('vision') ||
+          id.contains('mimo');
       if (supportsImage) {
         vision.add(id);
       } else {
@@ -133,9 +151,12 @@ class OpenRouterModelDirectory {
     }
 
     // Rank by family reliability — proven instruction-followers first — then
-    // keep OpenRouter's order within a family.
+    // keep provider order within a family.
     int rank(String id) {
       final lower = id.toLowerCase();
+      if (lower.contains('glm-5.3-flash') || lower.contains('glm-5.3')) return -3;
+      if (lower.contains('llama-3.2-11b') || lower.contains('11b-vision')) return -2;
+      if (lower.contains('mimo')) return -1;
       if (lower.startsWith('google/gemma')) return 0;
       if (lower.startsWith('google/')) return 1;
       if (lower.startsWith('z-ai/') || lower.contains('glm')) return 2;

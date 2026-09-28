@@ -33,10 +33,10 @@ class GeminiBillFraudResult {
 /// Dedicated Google Gemini AI Service for Indian Invoice, Bill & Legal Document Fraud Detection.
 class GeminiFraudService {
   static const List<String> _candidateModels = [
-    'gemini-3.6-flash',
     'gemini-3.5-flash',
+    'gemini-3.8-flash',
     'gemini-3.5-flash-lite',
-    'gemini-3.1-pro-preview',
+    'gemini-2.5-flash-lite',
     'gemini-flash-latest',
   ];
 

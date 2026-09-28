@@ -1,4 +1,6 @@
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
+import '../../config/api_config.dart';
 import '../../core/legal/models/legal_analysis_result.dart';
 import '../../core/legal/models/legal_document_type.dart';
 import '../../core/legal/models/legal_finding.dart';
@@ -6,6 +8,7 @@ import '../../core/legal/models/ocr_document.dart';
 import '../../models/scan_result_model.dart';
 import 'clause_extraction_service.dart';
 import 'document_anomaly_service.dart';
+import 'gemini_legal_analysis_service.dart';
 import 'indian_law_rag_service.dart';
 import 'legal_document_classifier.dart';
 import 'legal_risk_engine.dart';
@@ -20,15 +23,21 @@ class LegalOrchestrator {
   final LocalLegalLlmService _llmService = LocalLegalLlmService();
   final LegalRiskEngine _riskEngine = LegalRiskEngine();
   final LiveLegalUpdateService _liveUpdateService = LiveLegalUpdateService();
+  final GeminiLegalAnalysisService _geminiLegalService = GeminiLegalAnalysisService();
 
   IndianLawRagService get ragService => _ragService;
   LiveLegalUpdateService get liveUpdateService => _liveUpdateService;
 
   /// Analyzes a scanned OcrDocument through the complete Indian Legal Risk pipeline.
+  ///
+  /// [imagePaths] — Optional list of image file paths for direct Gemini multimodal analysis.
+  /// When provided, Gemini will perform visual analysis on the document images in addition
+  /// to analyzing the extracted text.
   Future<LegalAnalysisResult> analyze(
     OcrDocument doc, {
     LegalDocumentType? forcedType,
     bool enableAiEnhancement = true,
+    List<String>? imagePaths,
   }) async {
     // 0. Ensure dynamic laws are loaded and auto-sync in background once every 24h
     await _liveUpdateService.initialize();
@@ -44,12 +53,54 @@ class LegalOrchestrator {
     // 3. Document Authenticity & Anomaly checks
     final deterministicAnomalies = _anomalyService.analyzeAnomalies(doc);
 
-    // 4. AI Enhancement (Local Ollama / OpenRouter)
+    // 4. AI Enhancement — Prioritize NVIDIA NIM if configured, else Gemini -> fallback LLM
     AiLegalEnhancement? aiEnhancement;
     if (enableAiEnhancement) {
-      try {
-        aiEnhancement = await _llmService.analyze(doc.rawText, docType);
-      } catch (_) {}
+      final isNvidia =
+          ApiConfig.aiActive && ApiConfig.effectiveApiKey.startsWith('nvapi-');
+      if (isNvidia) {
+        // 4a. Prioritize NVIDIA NIM for document analyzer
+        try {
+          aiEnhancement = await _llmService.analyze(doc.rawText, docType);
+        } catch (e) {
+          debugPrintThrottled('NVIDIA NIM document analysis error: $e');
+        }
+
+        // 4b. Fallback to Gemini if NVIDIA NIM fails
+        if (aiEnhancement == null) {
+          try {
+            aiEnhancement = await _geminiLegalService
+                .analyzeDocument(
+                  rawText: doc.rawText,
+                  docType: docType,
+                  imagePaths: imagePaths,
+                )
+                .timeout(const Duration(seconds: 30));
+          } catch (e) {
+            debugPrintThrottled('Gemini legal analysis error: $e');
+          }
+        }
+      } else {
+        // 4a. Try Gemini AI first (supports multimodal image analysis)
+        try {
+          aiEnhancement = await _geminiLegalService
+              .analyzeDocument(
+                rawText: doc.rawText,
+                docType: docType,
+                imagePaths: imagePaths,
+              )
+              .timeout(const Duration(seconds: 30));
+        } catch (e) {
+          debugPrintThrottled('Gemini legal analysis error: $e');
+        }
+
+        // 4b. Fallback to existing LLM pipeline if Gemini fails
+        if (aiEnhancement == null) {
+          try {
+            aiEnhancement = await _llmService.analyze(doc.rawText, docType);
+          } catch (_) {}
+        }
+      }
     }
 
     // Ingest any newly discovered dynamic statutory citations

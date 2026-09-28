@@ -275,7 +275,7 @@ Respond strictly with ONLY valid raw JSON (no markdown, no explanation):
         'Content-Type': 'application/json; charset=utf-8',
       },
       body: utf8.encode(jsonPayload),
-    ).timeout(const Duration(seconds: 5));
+    ).timeout(const Duration(seconds: 12));
 
     if (response.statusCode != 200) {
       debugPrint('OpenRouter response code ${response.statusCode}: ${response.body}');

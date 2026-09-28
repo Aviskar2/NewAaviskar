@@ -57,7 +57,9 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
     buf.writeln('=== DOCUMENT ANALYZER REPORT ===');
     buf.writeln('Document: ${r.documentType.displayName}');
     buf.writeln('Risk Score: ${r.overallRiskScore.toInt()}/100 (${r.overallSeverity.displayName})');
-    buf.writeln('Confidence: 98.5% (Statutory AI Engine)');
+    if (r.isAiEnhanced && r.aiModelUsed != null) {
+      buf.writeln('AI Engine: ${r.aiModelUsed}');
+    }
     buf.writeln('\n--- SUMMARY ---');
     buf.writeln(r.plainSummary);
     buf.writeln('\n--- FLAGGED STATEMENTS (${r.findings.length}) ---');
@@ -65,7 +67,17 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
       buf.writeln('• [${f.severity.displayName}] ${f.title}');
       buf.writeln('  Statement: "${f.rawExcerpt}"');
       buf.writeln('  Warning: ${f.simpleExplanation}');
-      buf.writeln('  Action: ${f.recommendedAction}\n');
+      buf.writeln('  Action: ${f.recommendedAction}');
+      if (f.statutoryBasis.isNotEmpty) {
+        buf.writeln('  --- Indian Law References ---');
+        for (final s in f.statutoryBasis) {
+          buf.writeln('  📜 ${s.actName} — ${s.section}: ${s.title}');
+          if (s.officialSourceUrl != null && s.officialSourceUrl!.isNotEmpty) {
+            buf.writeln('     Source: ${s.officialSourceUrl}');
+          }
+        }
+      }
+      buf.writeln();
     }
     return buf.toString();
   }
@@ -151,15 +163,15 @@ class _LegalAnalysisScreenState extends State<LegalAnalysisScreen>
               color: const Color(0xFF2563EB).withValues(alpha: 0.25),
             ),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.verified_rounded, size: 16, color: Color(0xFF2563EB)),
-              SizedBox(width: 8),
+              const Icon(Icons.verified_rounded, size: 16, color: Color(0xFF2563EB)),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '98.5% Accuracy Confidence • Statutory AI Engine',
-                  style: TextStyle(
+                  '${r.isAiEnhanced ? (r.aiModelUsed != null && r.aiModelUsed!.isNotEmpty ? r.aiModelUsed! : 'AI Engine') : 'Statutory Engine'} • Indian Law Analysis',
+                  style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF2563EB),

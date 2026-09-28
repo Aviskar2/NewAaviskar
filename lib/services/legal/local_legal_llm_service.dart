@@ -43,6 +43,9 @@ class LocalLegalLlmService {
   }) async {
     if (rawText.trim().length < 15) return null;
 
+    final isNvidia =
+        ApiConfig.aiActive && ApiConfig.effectiveApiKey.startsWith('nvapi-');
+
     // 1. Try Local Ollama if requested
     if (preferLocalOllama) {
       try {
@@ -54,7 +57,22 @@ class LocalLegalLlmService {
       }
     }
 
-    // 2. Try Google Gemini AI for deep legal fraud & risk analysis
+    // 2. If NVIDIA NIM is configured, prioritize Cloud AI with NVIDIA NIM models
+    if (isNvidia) {
+      final candidates = await OpenRouterModelDirectory.textCandidates();
+      try {
+        final result = await _tryCandidates(candidates, rawText, docType)
+            .timeout(const Duration(seconds: 35), onTimeout: () {
+          debugPrint('NVIDIA NIM legal analysis timed out (35s). Falling back...');
+          return null;
+        });
+        if (result != null) return result;
+      } catch (e) {
+        debugPrint('NVIDIA NIM legal analysis error: $e');
+      }
+    }
+
+    // 3. Try Google Gemini AI for deep legal fraud & risk analysis
     if (ApiConfig.geminiActive) {
       try {
         final geminiService = GeminiFraudService();
@@ -68,13 +86,13 @@ class LocalLegalLlmService {
       }
     }
 
-    // 3. Try OpenRouter Cloud AI using active key
-    if (ApiConfig.aiActive) {
+    // 4. Try OpenRouter Cloud AI using active key (if not already tried)
+    if (ApiConfig.aiActive && !isNvidia) {
       final candidates = await OpenRouterModelDirectory.textCandidates();
       try {
         return await _tryCandidates(candidates, rawText, docType)
-            .timeout(const Duration(seconds: 8), onTimeout: () {
-          debugPrint('Legal LLM enhancement timed out (8s). Proceeding with deterministic rules.');
+            .timeout(const Duration(seconds: 25), onTimeout: () {
+          debugPrint('Legal LLM enhancement timed out (25s). Proceeding with deterministic rules.');
           return null;
         });
       } catch (e) {
@@ -93,17 +111,17 @@ class LocalLegalLlmService {
     int attempt = 0;
     for (final model in candidates) {
       if (attempt > 0) {
-        // Exponential backoff to avoid OpenRouter 429 rate limit bursts
-        final backoffMs = (400 * (1 << (attempt - 1))).clamp(400, 1500);
+        // Exponential backoff to avoid rate limit bursts
+        final backoffMs = (300 * (1 << (attempt - 1))).clamp(300, 1000);
         await Future.delayed(Duration(milliseconds: backoffMs));
       }
       attempt++;
       try {
         final result = await _callOpenRouter(model, rawText, docType)
-            .timeout(const Duration(seconds: 4));
+            .timeout(const Duration(seconds: 14));
         if (result != null) return result;
       } catch (e) {
-        debugPrint('OpenRouter model $model failed or timed out: $e');
+        debugPrint('Model $model failed or timed out: $e');
       }
     }
     return null;
@@ -191,7 +209,7 @@ Respond strictly with ONLY valid raw JSON in this schema (no markdown fences, no
           },
         ],
       }).replaceAll('\u00A0', ' ')),
-    ).timeout(const Duration(seconds: 4));
+    ).timeout(const Duration(seconds: 20));
 
     if (response.statusCode != 200) {
       debugPrint('OpenRouter ${response.statusCode} for $model');

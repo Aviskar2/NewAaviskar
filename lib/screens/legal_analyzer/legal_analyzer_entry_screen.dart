@@ -1,10 +1,11 @@
 import 'dart:io';
-import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:archive/archive.dart';
+import '../../config/api_config.dart';
 import '../../core/legal/models/legal_document_type.dart';
 import '../../core/legal/models/ocr_document.dart';
 import '../../models/scan_result_model.dart';
@@ -55,9 +56,13 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
   Future<void> _analyzeRawText(
     String text, {
     String? imagePath,
+    List<String>? imagePaths,
     LegalDocumentType? forcedType,
   }) async {
-    if (text.trim().isEmpty) {
+    // Gemini can analyze images directly even without pre-extracted text
+    final hasImages = (imagePaths != null && imagePaths.isNotEmpty) ||
+        (imagePath != null && imagePath.isNotEmpty);
+    if (text.trim().isEmpty && !hasImages) {
       if (mounted) {
         setState(() => _isAnalyzing = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -72,10 +77,21 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
       return;
     }
 
+    final aiName = ApiConfig.aiActive && ApiConfig.effectiveApiKey.startsWith('nvapi-')
+        ? 'NVIDIA NIM AI'
+        : 'AI';
     setState(() {
       _isAnalyzing = true;
-      _statusMessage = 'Extracting legal clauses & risk factors…';
+      _statusMessage = 'Analyzing document with $aiName…';
     });
+
+    // Collect all image paths for Gemini multimodal analysis
+    final allImagePaths = <String>[
+      if (imagePaths != null) ...imagePaths,
+      if (imagePath != null && imagePath.isNotEmpty &&
+          (imagePaths == null || !imagePaths.contains(imagePath)))
+        imagePath,
+    ];
 
     try {
       final doc = _orchestrator.createDocumentFromText(
@@ -83,8 +99,12 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
         imagePath: imagePath,
       );
       final result = await _orchestrator
-          .analyze(doc, forcedType: forcedType)
-          .timeout(const Duration(seconds: 15));
+          .analyze(
+            doc,
+            forcedType: forcedType,
+            imagePaths: allImagePaths.isNotEmpty ? allImagePaths : null,
+          )
+          .timeout(const Duration(seconds: 35));
 
       if (!mounted) return;
       setState(() => _isAnalyzing = false);
@@ -109,8 +129,11 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
   Future<void> _analyzeOcrDocument(
     OcrDocument doc, {
     LegalDocumentType? forcedType,
+    List<String>? imagePaths,
   }) async {
-    if (doc.rawText.trim().isEmpty) {
+    // Gemini can analyze images directly even without OCR text
+    final hasImages = imagePaths != null && imagePaths.isNotEmpty;
+    if (doc.rawText.trim().isEmpty && !hasImages) {
       if (mounted) {
         setState(() => _isAnalyzing = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -125,16 +148,23 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
       return;
     }
 
+    final aiName = ApiConfig.aiActive && ApiConfig.effectiveApiKey.startsWith('nvapi-')
+        ? 'NVIDIA NIM AI'
+        : 'AI';
     setState(() {
       _isAnalyzing = true;
       _statusMessage =
-          'Auditing legal clauses across ${doc.pages.length} page(s)…';
+          'Analyzing ${doc.pages.length} page(s) with $aiName…';
     });
 
     try {
       final result = await _orchestrator
-          .analyze(doc, forcedType: forcedType)
-          .timeout(const Duration(seconds: 20));
+          .analyze(
+            doc,
+            forcedType: forcedType,
+            imagePaths: imagePaths,
+          )
+          .timeout(const Duration(seconds: 40));
 
       if (!mounted) return;
       setState(() => _isAnalyzing = false);
@@ -156,7 +186,7 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
     }
   }
 
-  /// Processes multiple images sequentially through OCR and audits the complete multi-page document.
+  /// Processes multiple images through OCR + Gemini AI multimodal analysis.
   Future<void> _processMultipleImages(List<String> imagePaths) async {
     if (imagePaths.isEmpty) return;
 
@@ -178,7 +208,8 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
       }
 
       final doc = _orchestrator.createDocumentFromOcrResults(ocrResults);
-      await _analyzeOcrDocument(doc);
+      // Pass original image paths for Gemini multimodal analysis
+      await _analyzeOcrDocument(doc, imagePaths: imagePaths);
     } catch (e) {
       if (mounted) {
         setState(() => _isAnalyzing = false);
@@ -235,7 +266,7 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
       final bytes = await file.readAsBytes();
 
       // Run heavy PDF decompression & text extraction off the main UI thread
-      final pageTexts = await Isolate.run(() => _extractPdfPagesSync(bytes));
+      final pageTexts = await compute(_extractPdfPagesSync, bytes);
 
       if (pageTexts.isEmpty) {
         throw Exception(
@@ -274,7 +305,7 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
       String text = '';
       if (path.toLowerCase().endsWith('.docx')) {
         final bytes = await File(path).readAsBytes();
-        text = await Isolate.run(() => _extractDocxTextSync(bytes));
+        text = await compute(_extractDocxTextSync, bytes);
       } else {
         text = await File(path).readAsString();
       }
@@ -294,6 +325,7 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
   }
 
   /// Camera capture supporting continuous multi-page scanning.
+  /// Captured images are sent directly to Gemini AI for multimodal analysis.
   Future<void> _startCameraCapture() async {
     try {
       final picker = ImagePicker();
@@ -685,47 +717,6 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
     }
   }
 
-  void _showPasteDialog() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Paste Agreement Text'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: controller,
-            maxLines: 8,
-            decoration: const InputDecoration(
-              hintText: 'Paste contract, agreement, or legal clauses here...',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final text = controller.text;
-              Navigator.pop(ctx);
-              if (text.trim().isNotEmpty) {
-                _analyzeRawText(text);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Analyze'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildProtectionItem({
     required IconData icon,
     required Color color,
@@ -789,7 +780,7 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Cross-referencing India Code & statutory precedents',
+                  'Powered by ${ApiConfig.aiActive && ApiConfig.effectiveApiKey.startsWith('nvapi-') ? 'NVIDIA NIM AI' : 'AI Engine'} • Cross-referencing India Code & statutory precedents',
                   style: theme.textTheme.bodySmall,
                   textAlign: TextAlign.center,
                 ),
@@ -816,48 +807,6 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Banner
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF991B1B), Color(0xFFDC2626)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.shield_rounded, color: Colors.white, size: 24),
-                    SizedBox(width: 10),
-                    Text(
-                      'Document Risk & Scam Analyzer',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Scan contracts, lease deeds, offer letters, or agreements to detect scams, unfair penalties, void restraints (Sec 27), and traps under Indian Law.',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
           // Primary Actions
           Text(
             'CAPTURE OR UPLOAD',
@@ -890,123 +839,13 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _ActionTile(
-                  icon: Icons.text_snippet_rounded,
-                  label: 'Paste Text',
-                  subtitle: 'Direct clause analysis',
-                  color: const Color(0xFF059669),
-                  onTap: _showPasteDialog,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _ActionTile(
-                  icon: Icons.balance_rounded,
-                  label: 'Offer Letter',
-                  subtitle: 'Compare & find beneficial',
-                  color: const Color(0xFF7C3AED),
-                  onTap: _openOfferLetterComparison,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // Offer Letter Comparison Feature Highlight Banner
-          InkWell(
+          _ActionTile(
+            icon: Icons.balance_rounded,
+            label: 'Offer Letter Comparison',
+            subtitle: 'Compare previous & new offer letters to find beneficial terms',
+            color: const Color(0xFF7C3AED),
             onTap: _openOfferLetterComparison,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF2563EB).withValues(alpha: 0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.compare_arrows_rounded,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'Offer Letter Comparison',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEA580C),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Text(
-                                'NEW',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Upload previous & new offer letters to compare CTC, bonds, notice & see which is more beneficial.',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    color: Colors.white70,
-                    size: 16,
-                  ),
-                ],
-              ),
-            ),
+            horizontal: true,
           ),
           const SizedBox(height: 24),
 
@@ -1067,6 +906,7 @@ class _ActionTile extends StatelessWidget {
   final String? subtitle;
   final Color color;
   final VoidCallback onTap;
+  final bool horizontal;
 
   const _ActionTile({
     required this.icon,
@@ -1074,6 +914,7 @@ class _ActionTile extends StatelessWidget {
     this.subtitle,
     required this.color,
     required this.onTap,
+    this.horizontal = false,
   });
 
   @override
@@ -1082,35 +923,81 @@ class _ActionTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+        padding: horizontal
+            ? const EdgeInsets.symmetric(vertical: 16, horizontal: 16)
+            : const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
-        child: Column(
-          children: [
-            Icon(icon, size: 30, color: color),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: color,
+        child: horizontal
+            ? Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, size: 24, color: color),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: color,
+                          ),
+                        ),
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            subtitle!,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 22,
+                    color: color,
+                  ),
+                ],
+              )
+            : Column(
+                children: [
+                  Icon(icon, size: 30, color: color),
+                  const SizedBox(height: 8),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: color,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ],
               ),
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                subtitle!,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }

@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -180,7 +180,7 @@ class _OfferLetterComparisonScreenState
       });
 
       final bytes = await File(path).readAsBytes();
-      final pageTexts = await Isolate.run(() => _extractPdfPagesSync(bytes));
+      final pageTexts = await compute(_extractPdfPagesSync, bytes);
       final combined = pageTexts.join('\n\n');
 
       if (!mounted) return;
@@ -268,7 +268,7 @@ class _OfferLetterComparisonScreenState
       String text = '';
       if (path.toLowerCase().endsWith('.docx')) {
         final bytes = await File(path).readAsBytes();
-        text = await Isolate.run(() => _extractDocxTextSync(bytes));
+        text = await compute(_extractDocxTextSync, bytes);
       } else {
         text = await File(path).readAsString();
       }

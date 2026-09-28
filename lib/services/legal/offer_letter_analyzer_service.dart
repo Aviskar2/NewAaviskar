@@ -2,14 +2,16 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../config/api_config.dart';
+import '../../config/openrouter_models.dart';
 import '../../core/legal/models/offer_letter_models.dart';
 
 /// Service for analyzing and comparing two employment offer letters under Indian Law.
 class OfferLetterAnalyzerService {
   static const List<String> _geminiModels = [
-    'gemini-2.5-flash',
-    'gemini-1.5-flash',
-    'gemini-2.0-flash',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-2.5-flash-lite',
     'gemini-flash-latest',
   ];
 
@@ -20,7 +22,27 @@ class OfferLetterAnalyzerService {
     String? companyAName,
     String? companyBName,
   }) async {
-    // 1. Try Google Gemini AI if active
+    final isNvidia =
+        ApiConfig.aiActive && ApiConfig.effectiveApiKey.startsWith('nvapi-');
+
+    // 1. If NVIDIA NIM key is configured, prioritize NVIDIA NIM models
+    if (isNvidia &&
+        previousOfferText.trim().length > 30 &&
+        newOfferText.trim().length > 30) {
+      try {
+        final aiResult = await _analyzeWithNvidiaOrOpenRouter(
+          previousOfferText: previousOfferText,
+          newOfferText: newOfferText,
+          companyAName: companyAName,
+          companyBName: companyBName,
+        );
+        if (aiResult != null) return aiResult;
+      } catch (e) {
+        debugPrint('NVIDIA NIM offer letter comparison error: $e. Falling back...');
+      }
+    }
+
+    // 2. Try Google Gemini AI if active
     if (ApiConfig.geminiActive &&
         previousOfferText.trim().length > 30 &&
         newOfferText.trim().length > 30) {
@@ -37,7 +59,25 @@ class OfferLetterAnalyzerService {
       }
     }
 
-    // 2. Deterministic Local Rules & Regex Engine (Works 100% offline & reliably)
+    // 3. Fallback to OpenRouter Cloud AI if not already tried for NVIDIA
+    if (ApiConfig.aiActive &&
+        !isNvidia &&
+        previousOfferText.trim().length > 30 &&
+        newOfferText.trim().length > 30) {
+      try {
+        final aiResult = await _analyzeWithNvidiaOrOpenRouter(
+          previousOfferText: previousOfferText,
+          newOfferText: newOfferText,
+          companyAName: companyAName,
+          companyBName: companyBName,
+        );
+        if (aiResult != null) return aiResult;
+      } catch (e) {
+        debugPrint('Cloud AI offer letter comparison error: $e.');
+      }
+    }
+
+    // 4. Deterministic Local Rules & Regex Engine (Works 100% offline & reliably)
     return _analyzeWithDeterministicRules(
       previousOfferText: previousOfferText,
       newOfferText: newOfferText,
@@ -47,7 +87,7 @@ class OfferLetterAnalyzerService {
   }
 
   // ==========================================
-  // GEMINI AI ENGINE
+  // AI ENGINES (GEMINI & NVIDIA NIM / CLOUD)
   // ==========================================
 
   Future<OfferComparisonResult?> _analyzeWithGemini({
@@ -59,7 +99,156 @@ class OfferLetterAnalyzerService {
     final apiKey = ApiConfig.effectiveGeminiApiKey;
     if (apiKey.isEmpty) return null;
 
-    final systemPrompt = '''
+    final systemPrompt = _offerPrompt;
+
+    for (final model in _geminiModels) {
+      try {
+        final uri = Uri.parse(
+          '${ApiConfig.geminiBaseUrl}/models/$model:generateContent?key=$apiKey',
+        );
+
+        final client = HttpClient();
+        final request = await client.postUrl(uri).timeout(const Duration(seconds: 15));
+        request.headers.contentType =
+            ContentType('application', 'json', charset: 'utf-8');
+
+        final payload = {
+          'contents': [
+            {
+              'role': 'user',
+              'parts': [
+                {
+                  'text': '$systemPrompt\n\n'
+                      '=== OFFER LETTER A (PREVIOUS/CURRENT) ===\n$previousOfferText\n\n'
+                      '=== OFFER LETTER B (NEW PROSPECTIVE) ===\n$newOfferText'
+                }
+              ]
+            }
+          ],
+          'generationConfig': {
+            'responseMimeType': 'application/json',
+            'temperature': 0.1,
+          }
+        };
+
+        final utf8Bytes = utf8.encode(jsonEncode(payload));
+        request.contentLength = utf8Bytes.length;
+        request.add(utf8Bytes);
+
+        final response = await request.close().timeout(const Duration(seconds: 15));
+        final responseBody = await response.transform(utf8.decoder).join();
+        client.close();
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(responseBody) as Map<String, dynamic>;
+          final text = data['candidates']?[0]?['content']?['parts']?[0]?['text']?.toString();
+          if (text != null && text.isNotEmpty) {
+            final json = jsonDecode(text) as Map<String, dynamic>;
+            return _parseGeminiResult(
+              json,
+              previousOfferText,
+              newOfferText,
+              model,
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('Gemini offer analysis attempt ($model) error: $e');
+      }
+    }
+
+    return null;
+  }
+
+  Future<OfferComparisonResult?> _analyzeWithNvidiaOrOpenRouter({
+    required String previousOfferText,
+    required String newOfferText,
+    String? companyAName,
+    String? companyBName,
+  }) async {
+    final candidates = await OpenRouterModelDirectory.textCandidates();
+    final systemPrompt = _offerPrompt;
+    final uri = Uri.parse('${ApiConfig.openRouterBaseUrl}/chat/completions');
+
+    final userContent =
+        '=== OFFER LETTER A (PREVIOUS/CURRENT) ===\n${previousOfferText.replaceAll('\u00A0', ' ')}\n\n'
+        '=== OFFER LETTER B (NEW PROSPECTIVE) ===\n${newOfferText.replaceAll('\u00A0', ' ')}';
+
+    for (final model in candidates) {
+      try {
+        final client = HttpClient();
+        final request =
+            await client.postUrl(uri).timeout(const Duration(seconds: 15));
+        request.headers.contentType =
+            ContentType('application', 'json', charset: 'utf-8');
+        request.headers.add('Authorization', 'Bearer ${ApiConfig.effectiveApiKey}');
+        request.headers.add('HTTP-Referer', ApiConfig.appSiteUrl);
+        request.headers.add('X-Title', ApiConfig.appName);
+
+        final payload = {
+          'model': model,
+          'temperature': 0.1,
+          'messages': [
+            {'role': 'system', 'content': systemPrompt.replaceAll('\u00A0', ' ')},
+            {'role': 'user', 'content': userContent},
+          ],
+        };
+
+        final utf8Bytes = utf8.encode(jsonEncode(payload));
+        request.contentLength = utf8Bytes.length;
+        request.add(utf8Bytes);
+
+        final response =
+            await request.close().timeout(const Duration(seconds: 22));
+        final responseBody = await response.transform(utf8.decoder).join();
+        client.close();
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(responseBody) as Map<String, dynamic>;
+          final content =
+              data['choices']?[0]?['message']?['content']?.toString();
+          if (content != null && content.isNotEmpty) {
+            final jsonStr = _extractJson(content);
+            if (jsonStr != null) {
+              final json = jsonDecode(jsonStr) as Map<String, dynamic>;
+              return _parseGeminiResult(
+                json,
+                previousOfferText,
+                newOfferText,
+                model,
+              );
+            }
+          }
+        } else if (response.statusCode == 403 || response.statusCode == 404) {
+          OpenRouterModelDirectory.blockModel(model);
+        } else if (response.statusCode == 429) {
+          OpenRouterModelDirectory.coolDown(model);
+        }
+      } catch (e) {
+        debugPrint('NVIDIA/OpenRouter offer analysis attempt ($model) error: $e');
+      }
+    }
+    return null;
+  }
+
+  static String? _extractJson(String text) {
+    String cleaned = text
+        .replaceAll(RegExp(r'<think>[\s\S]*?<\/think>', caseSensitive: false), '')
+        .trim();
+    if (cleaned.startsWith('```json')) cleaned = cleaned.substring(7);
+    if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
+    if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
+    cleaned = cleaned.trim();
+
+    final startIdx = cleaned.indexOf('{');
+    final endIdx = cleaned.lastIndexOf('}');
+    if (startIdx != -1 && endIdx != -1 && endIdx > startIdx) {
+      return cleaned.substring(startIdx, endIdx + 1);
+    }
+    return null;
+  }
+
+  static String get _offerPrompt => '''
 You are a senior Indian Labour Law Attorney & Executive Compensation Advisor.
 Compare two Indian employment offer letters:
 - OFFER A: Previous / Current Company Offer
@@ -122,7 +311,7 @@ Respond strictly in valid JSON matching this schema:
     "red_flags": ["24-month service bond with ₹3.5L penalty", "2-year non-compete (Void under Sec 27)", "6-day work week", "90-day rigid notice"],
     "positive_highlights": ["Higher headline CTC", "Joining bonus"]
   },
-  "winner": "conditional", // "offerB", "offerA", or "conditional"
+  "winner": "conditional",
   "winner_title": "New Offer has Higher Financial Value, but Severe Legal & Work-Life Traps",
   "verdict_summary": "...",
   "scoreA": 74.0,
@@ -165,65 +354,6 @@ Respond strictly in valid JSON matching this schema:
   ]
 }
 ''';
-
-    for (final model in _geminiModels) {
-      try {
-        final uri = Uri.parse(
-          '${ApiConfig.geminiBaseUrl}/models/$model:generateContent?key=$apiKey',
-        );
-
-        final client = HttpClient();
-        final request = await client.postUrl(uri).timeout(const Duration(seconds: 15));
-        request.headers.contentType =
-            ContentType('application', 'json', charset: 'utf-8');
-
-        final payload = {
-          'contents': [
-            {
-              'role': 'user',
-              'parts': [
-                {
-                  'text': '$systemPrompt\n\n'
-                      '=== OFFER LETTER A (PREVIOUS/CURRENT) ===\n$previousOfferText\n\n'
-                      '=== OFFER LETTER B (NEW PROSPECTIVE) ===\n$newOfferText'
-                }
-              ]
-            }
-          ],
-          'generationConfig': {
-            'responseMimeType': 'application/json',
-            'temperature': 0.1,
-          }
-        };
-
-        final utf8Bytes = utf8.encode(jsonEncode(payload));
-        request.contentLength = utf8Bytes.length;
-        request.add(utf8Bytes);
-
-        final response = await request.close().timeout(const Duration(seconds: 15));
-        final responseBody = await response.transform(utf8.decoder).join();
-        client.close();
-
-        if (response.statusCode == 200) {
-          final data = jsonDecode(responseBody) as Map<String, dynamic>;
-          final text = data['candidates']?[0]?['content']?['parts']?[0]?['text']?.toString();
-          if (text != null && text.isNotEmpty) {
-            final json = jsonDecode(text) as Map<String, dynamic>;
-            return _parseGeminiResult(
-              json,
-              previousOfferText,
-              newOfferText,
-              model,
-            );
-          }
-        }
-      } catch (e) {
-        debugPrint('Gemini offer analysis attempt ($model) error: $e');
-      }
-    }
-
-    return null;
-  }
 
   OfferComparisonResult _parseGeminiResult(
     Map<String, dynamic> json,

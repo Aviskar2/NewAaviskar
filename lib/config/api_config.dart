@@ -11,10 +11,27 @@ class ApiConfig {
   ///      Settings → AI Features (stored only on-device).
   ///
   /// Priority order: runtime key (AppSettings) wins over this compile-time key.
+  /// Primary cloud AI API key (supports NVIDIA NIM, OpenRouter, OpenCode).
   static const String openRouterApiKey =
-      String.fromEnvironment('OPENROUTER_API_KEY', defaultValue: '');
+      String.fromEnvironment('OPENROUTER_API_KEY',
+          defaultValue: '');
 
-  static const String openRouterBaseUrl = 'https://openrouter.ai/api/v1';
+  /// Base URL dynamically selected based on whether an NVIDIA NIM, OpenCode, or OpenRouter key is active.
+  static String get openRouterBaseUrl {
+    final key = effectiveApiKey;
+    if (key.startsWith('nvapi-')) {
+      return 'https://integrate.api.nvidia.com/v1';
+    } else if (key.startsWith('oc_sk_')) {
+      return 'https://opencode.ai/zen/v1';
+    }
+    return 'https://openrouter.ai/api/v1';
+  }
+
+  /// Default model when NVIDIA NIM is active.
+  static const String nvidiaNimModel = 'z-ai/glm-5.3-flash';
+
+  /// Default OpenCode model.
+  static const String openCodeModel = 'mimo-v2.6-flash-free';
 
   /// Master switch for cloud AI enhancement. Integration tests set this to
   /// false so analysis pipelines stay deterministic and offline; production
@@ -48,7 +65,7 @@ class ApiConfig {
       'https://generativelanguage.googleapis.com/v1beta';
 
   /// Optimal fast model with native reasoning, high OCR visual acuity & Indian law capability.
-  static const String geminiModel = 'gemini-3.6-flash';
+  static const String geminiModel = 'gemini-3.5-flash';
 
   /// True when Gemini API key is configured and available.
   static bool get hasGeminiKey =>

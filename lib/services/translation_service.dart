@@ -445,7 +445,7 @@ class TranslationService {
                 {'role': 'user', 'content': text},
               ],
             }),
-          ).timeout(const Duration(seconds: 8));
+          ).timeout(const Duration(seconds: 12));
 
           if (response.statusCode == 200) {
             final decoded = jsonDecode(response.body);
