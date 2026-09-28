@@ -1,6 +1,4 @@
-# aura_ai
-
-A new Flutter project.
+# ScanSure
 
 ## Getting Started
 
