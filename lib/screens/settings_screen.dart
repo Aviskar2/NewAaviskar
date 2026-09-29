@@ -324,7 +324,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         );
       },
-    );
+    ).whenComplete(() {
+      // Dispose controllers created for this sheet to avoid leaking their
+      // internal listeners once the sheet is dismissed.
+      openRouterController.dispose();
+      geminiController.dispose();
+    });
   }
 
   // ─── Resolution Picker ──────────────────────────────────────────────────────
@@ -750,7 +755,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         );
       },
-    );
+    ).whenComplete(() {
+      nameCtrl.dispose();
+      emailCtrl.dispose();
+    });
   }
 
   // ─── Help & Documentation Dialog ────────────────────────────────────────────

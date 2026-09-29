@@ -418,7 +418,7 @@ class MainNavigationState extends State<MainNavigation> {
       'title': query.length > 24 ? '${query.substring(0, 21)}...' : query,
       'time': 'Just Now',
       'description': response.length > 60 ? '${response.substring(0, 57)}...' : response,
-      'tags': ['Chat', 'Aura'],
+      'tags': ['Chat', 'ScanSure'],
       'category': 'Chat',
       'color': const Color(0xFF2563EB),
       'dateGroup': 'TODAY',

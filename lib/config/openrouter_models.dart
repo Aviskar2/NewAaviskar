@@ -41,7 +41,11 @@ class OpenRouterModelDirectory {
       !_blocked.contains(id) &&
       !(_cooldownUntil[id]?.isAfter(DateTime.now()) ?? false);
 
-  /// Curated fallbacks (verified live Aug 2026). Used only if discovery fails.
+  /// Curated fallbacks used only when live discovery ([_discover]) fails or
+  /// times out. Free-tier model IDs on OpenRouter rotate frequently, so this
+  /// list should be treated as a best-effort snapshot, not a guarantee that
+  /// every entry is currently live — always prefer the discovered list when
+  /// available.
   static const List<String> fallbackVisionModels = [
     'google/gemma-4-31b-it:free',
     'minimax/minimax-m3:free',

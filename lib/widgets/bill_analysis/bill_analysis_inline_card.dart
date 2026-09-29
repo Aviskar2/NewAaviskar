@@ -47,7 +47,7 @@ class _BillAnalysisInlineCardState extends State<BillAnalysisInlineCard>
   }
 
   Color _verdictColor(BuildContext context) {
-    final appColors = Theme.of(context).extension<AppColors>()!;
+    final appColors = Theme.of(context).extension<AppColors>() ?? AppColors.light;
     switch (widget.result.overallResult) {
       case OverallResult.looksCorrect: return appColors.success;
       case OverallResult.needsVerification: return appColors.warning;

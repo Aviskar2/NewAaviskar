@@ -32,13 +32,9 @@ class GeminiBillFraudResult {
 
 /// Dedicated Google Gemini AI Service for Indian Invoice, Bill & Legal Document Fraud Detection.
 class GeminiFraudService {
-  static const List<String> _candidateModels = [
-    'gemini-3.6-flash',
-    'gemini-3.5-flash',
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-pro-preview',
-    'gemini-flash-latest',
-  ];
+  /// Fallback chain sourced from [ApiConfig.geminiCandidateModels] so this
+  /// service can never drift out of sync with other Gemini call sites.
+  static const List<String> _candidateModels = ApiConfig.geminiCandidateModels;
 
   /// Official Government Source references for legal & fraud citations
   static final GovernmentSource _ccpaSource = GovernmentSource(

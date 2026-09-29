@@ -47,8 +47,26 @@ class ApiConfig {
   static const String geminiBaseUrl =
       'https://generativelanguage.googleapis.com/v1beta';
 
-  /// Optimal fast model with native reasoning, high OCR visual acuity & Indian law capability.
-  static const String geminiModel = 'gemini-3.6-flash';
+  /// Single source of truth for the Gemini model fallback chain.
+  ///
+  /// Every service that calls the Gemini API (bill fraud audit, legal document
+  /// audit, offer letter comparison) must iterate over THIS list instead of
+  /// declaring its own — previously each service hardcoded a separate, drifted
+  /// list of model IDs, several of which pointed at models Google has already
+  /// deprecated/shut down (gemini-1.5-flash, gemini-2.0-flash, gemini-2.5-flash).
+  /// Ordered most-capable/current first; `gemini-flash-latest` is kept last as a
+  /// safe rolling alias that always resolves to Google's current default Flash
+  /// model, so it should never itself go stale.
+  /// See: https://ai.google.dev/gemini-api/docs/generate-content/latest-model
+  static const List<String> geminiCandidateModels = [
+    'gemini-3.8-flash',
+    'gemini-3.6-flash',
+    'gemini-flash-latest',
+  ];
+
+  /// Primary/default model — the first entry attempted in [geminiCandidateModels].
+  /// Kept for display purposes and backwards compatibility.
+  static String get geminiModel => geminiCandidateModels.first;
 
   /// True when Gemini API key is configured and available.
   static bool get hasGeminiKey =>

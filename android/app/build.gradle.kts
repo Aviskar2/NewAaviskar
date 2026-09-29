@@ -6,6 +6,15 @@ plugins {
 }
 
 android {
+    // KNOWN ISSUE: this namespace/applicationId still reflects the app's old
+    // "Aura AI" branding, from before it was renamed to "ScanSure" (see
+    // android:label in AndroidManifest.xml, which already says "ScanSure").
+    // NOT renamed here intentionally: applicationId is the app's permanent
+    // identity on users' devices and the Play Store — changing it is a
+    // breaking change (existing installs would be treated as a different
+    // app; users would need to reinstall and would lose local data such as
+    // scan history and saved API keys). Rename only as a deliberate,
+    // coordinated release step, not as an incidental cleanup.
     namespace = "com.aura.aura_ai"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -21,6 +30,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // See KNOWN ISSUE note above `namespace` — intentionally left as-is.
         applicationId = "com.aura.aura_ai"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.

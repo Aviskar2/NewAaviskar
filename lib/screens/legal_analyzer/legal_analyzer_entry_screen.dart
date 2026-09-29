@@ -723,7 +723,7 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
           ),
         ],
       ),
-    );
+    ).whenComplete(controller.dispose);
   }
 
   Widget _buildProtectionItem({

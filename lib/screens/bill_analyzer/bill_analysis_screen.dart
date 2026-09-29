@@ -43,7 +43,7 @@ class _BillAnalysisScreenState extends State<BillAnalysisScreen>
   }
 
   Color _overallColor(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
+    final colors = Theme.of(context).extension<AppColors>() ?? AppColors.light;
     switch (widget.result.overallResult) {
       case OverallResult.looksCorrect: return colors.success;
       case OverallResult.needsVerification: return colors.warning;
@@ -182,7 +182,7 @@ class _OverallBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appColors = Theme.of(context).extension<AppColors>()!;
+    final appColors = Theme.of(context).extension<AppColors>() ?? AppColors.light;
     final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -353,7 +353,7 @@ class _AnomalyScoreCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final appColors = theme.extension<AppColors>()!;
+    final appColors = theme.extension<AppColors>() ?? AppColors.light;
     final suspiciousCount = findings
         .where((f) => f.severity == FindingSeverity.suspicious)
         .length;
@@ -414,7 +414,7 @@ class _PatternFindingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final appColors = theme.extension<AppColors>()!;
+    final appColors = theme.extension<AppColors>() ?? AppColors.light;
     final color = finding.severity == FindingSeverity.suspicious
         ? appColors.error
         : finding.severity == FindingSeverity.verify
@@ -529,7 +529,7 @@ class _SummaryTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = result;
     final theme = Theme.of(context);
-    final appColors = theme.extension<AppColors>()!;
+    final appColors = theme.extension<AppColors>() ?? AppColors.light;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -854,7 +854,7 @@ class _GstinTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final appColors = Theme.of(context).extension<AppColors>()!;
+    final appColors = Theme.of(context).extension<AppColors>() ?? AppColors.light;
 
     if (verification == null) {
       return Center(
@@ -971,7 +971,7 @@ class _SourcesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appColors = Theme.of(context).extension<AppColors>()!;
+    final appColors = Theme.of(context).extension<AppColors>() ?? AppColors.light;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -1004,7 +1004,7 @@ class _SourceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final appColors = Theme.of(context).extension<AppColors>()!;
+    final appColors = Theme.of(context).extension<AppColors>() ?? AppColors.light;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
