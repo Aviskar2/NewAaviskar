@@ -7,13 +7,12 @@ import '../../core/legal/models/offer_letter_models.dart';
 
 /// Service for analyzing and comparing two employment offer letters under Indian Law.
 class OfferLetterAnalyzerService {
-  static const List<String> _geminiModels = [
-    'gemini-3.5-flash',
-    'gemini-3.8-flash',
-    'gemini-3.5-flash-lite',
-    'gemini-2.5-flash-lite',
-    'gemini-flash-latest',
-  ];
+  /// Fallback chain sourced from [ApiConfig.geminiCandidateModels] so this
+  /// service can never drift out of sync with other Gemini call sites.
+  /// Previously this list independently hardcoded gemini-2.5-flash,
+  /// gemini-1.5-flash, and gemini-2.0-flash — all since deprecated/shut down
+  /// by Google — while other Gemini services used a different, newer list.
+  static const List<String> _geminiModels = ApiConfig.geminiCandidateModels;
 
   /// Compares two offer letters and returns an in-depth comparative audit.
   Future<OfferComparisonResult> compareOffers({

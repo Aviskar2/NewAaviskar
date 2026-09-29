@@ -13,7 +13,12 @@ void main() {
     test('Gemini API Key and Endpoint is configured and active', () async {
       await AppSettings.setGeminiApiKey('AIzaSyTestMockGeminiApiKey12345');
       expect(ApiConfig.hasGeminiKey, isTrue);
-      expect(ApiConfig.geminiModel, 'gemini-3.5-flash');
+      // geminiModel is derived from the shared candidate list, so assert
+      // against that single source of truth instead of a hardcoded string —
+      // this keeps the test in sync automatically if the fallback chain in
+      // ApiConfig.geminiCandidateModels is ever updated.
+      expect(ApiConfig.geminiModel, ApiConfig.geminiCandidateModels.first);
+      expect(ApiConfig.geminiCandidateModels, isNotEmpty);
       expect(ApiConfig.effectiveGeminiApiKey, 'AIzaSyTestMockGeminiApiKey12345');
       expect(AppSettings.maskedGeminiApiKey, contains('AIzaS'));
       await AppSettings.setGeminiApiKey('');

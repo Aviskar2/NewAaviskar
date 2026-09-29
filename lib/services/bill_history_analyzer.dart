@@ -248,7 +248,7 @@ class BillHistoryAnalyzer {
     final amounts = vendorBills.map((r) => r.grandTotal).toList();
     final mean = amounts.reduce((a, b) => a + b) / amounts.length;
     final variance = amounts.fold(0.0, (s, a) => s + (a - mean) * (a - mean)) / amounts.length;
-    final stddev = mean > 0 ? (variance > 0 ? _sqrt(variance) : 0) : 0;
+    final double stddev = mean > 0 ? (variance > 0 ? _sqrt(variance) : 0.0) : 0.0;
 
     if (stddev == 0 || mean == 0) return;
 
@@ -277,7 +277,7 @@ class BillHistoryAnalyzer {
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
   double _sqrt(double x) {
-    if (x <= 0) return 0;
+    if (x <= 0) return 0.0;
     double guess = x / 2;
     for (int i = 0; i < 20; i++) {
       guess = (guess + x / guess) / 2;

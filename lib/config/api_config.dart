@@ -65,7 +65,7 @@ class ApiConfig {
       'https://generativelanguage.googleapis.com/v1beta';
 
   /// Optimal fast model with native reasoning, high OCR visual acuity & Indian law capability.
-  static const String geminiModel = 'gemini-3.5-flash';
+  static const String geminiModel = 'gemini-3.6-flash';
 
   /// True when Gemini API key is configured and available.
   static bool get hasGeminiKey =>

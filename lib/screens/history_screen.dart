@@ -265,7 +265,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildHistoryCard(Map<String, dynamic> item) {
     final theme = Theme.of(context);
-    final appColors = theme.extension<AppColors>()!;
+    final appColors = theme.extension<AppColors>() ?? AppColors.light;
     final List<dynamic> tags = item['tags'] ?? [];
     final Color accentColor = item['color'] ?? theme.colorScheme.primary;
 

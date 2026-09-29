@@ -717,6 +717,47 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
     }
   }
 
+  void _showPasteDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Paste Agreement Text'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: controller,
+            maxLines: 8,
+            decoration: const InputDecoration(
+              hintText: 'Paste contract, agreement, or legal clauses here...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = controller.text;
+              Navigator.pop(ctx);
+              if (text.trim().isNotEmpty) {
+                _analyzeRawText(text);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Analyze'),
+          ),
+        ],
+      ),
+    ).whenComplete(controller.dispose);
+  }
+
   Widget _buildProtectionItem({
     required IconData icon,
     required Color color,
