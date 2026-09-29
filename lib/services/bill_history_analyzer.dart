@@ -1,6 +1,7 @@
 /// Bill history analyzer — tracks past bill patterns per vendor to detect
 /// progressive fraud, amount inflation, and duplicate vendor identities.
 /// Uses SharedPreferences for lightweight local persistence.
+library;
 
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';

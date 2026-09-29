@@ -8,11 +8,11 @@ class FindingCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const FindingCard({
-    Key? key,
+    super.key,
     required this.finding,
     required this.isExpanded,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   Color _severityColor() {
     switch (finding.severity) {

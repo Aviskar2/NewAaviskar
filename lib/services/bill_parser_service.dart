@@ -2,6 +2,7 @@
 /// Supports: Supermarket receipts, Restaurant bills, Pharmacy invoices,
 ///           GST tax invoices, E-commerce receipts, Fuel slips, Hotel bills.
 /// Uses multi-strategy regex + heuristics. Deterministic — no LLM.
+library;
 
 import '../models/bill_model.dart';
 

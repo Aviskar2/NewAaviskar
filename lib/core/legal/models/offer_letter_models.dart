@@ -1,4 +1,5 @@
 /// Models for Offer Letter Extraction and Comparison under Indian Employment Law.
+library;
 
 enum OfferChoice {
   offerA, // Previous / Current

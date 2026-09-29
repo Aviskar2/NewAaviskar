@@ -3,6 +3,7 @@
 /// NO LLM. NO assumptions about fixed rates.
 /// Key principle: only flag a REAL problem when ALL required data is confidently available.
 /// Missing data → skip check silently, never flag as suspicious.
+library;
 
 import '../models/bill_model.dart';
 import '../models/analysis_result.dart';

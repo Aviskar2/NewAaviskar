@@ -10,13 +10,13 @@ class ScannerOverlay extends StatefulWidget {
   final double frameSize;
 
   const ScannerOverlay({
-    Key? key,
+    super.key,
     this.borderColor = const Color(0xFF00E3FD),
     this.laserColor = const Color(0xFF00E3FD),
     this.borderWidth = 3.5,
     this.cornerSize = 28,
     this.frameSize = 240,
-  }) : super(key: key);
+  });
 
   @override
   State<ScannerOverlay> createState() => _ScannerOverlayState();
@@ -94,7 +94,7 @@ class _ScannerOverlayState extends State<ScannerOverlay>
                 // Animated laser line
                 AnimatedBuilder(
                   animation: _laserAnim,
-                  builder: (_, __) {
+                  builder: (_, _) {
                     final top = _laserAnim.value * (widget.frameSize - 2);
                     return Positioned(
                       top: top,

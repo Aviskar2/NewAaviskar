@@ -9,10 +9,10 @@ class ProfileSetupScreen extends StatefulWidget {
   final ValueChanged<CitizenProfile> onProfileSaved;
 
   const ProfileSetupScreen({
-    Key? key,
+    super.key,
     required this.initialProfile,
     required this.onProfileSaved,
-  }) : super(key: key);
+  });
 
   @override
   State<ProfileSetupScreen> createState() => _ProfileSetupScreenState();

@@ -8,11 +8,11 @@ class LanguagePickerSheet extends StatefulWidget {
   final String title;
 
   const LanguagePickerSheet({
-    Key? key,
+    super.key,
     required this.languages,
     required this.selected,
     required this.title,
-  }) : super(key: key);
+  });
 
   /// Shows the picker and returns the selected [AppLanguage], or null if dismissed.
   static Future<AppLanguage?> show(

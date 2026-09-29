@@ -1,5 +1,6 @@
 /// Compact finding card for chat-stream display.
 /// Shows a single finding with expand/collapse in a minimal layout.
+library;
 
 import 'package:flutter/material.dart';
 import '../../models/analysis_result.dart';
@@ -9,10 +10,10 @@ class ChatFindingCard extends StatefulWidget {
   final bool compact;
 
   const ChatFindingCard({
-    Key? key,
+    super.key,
     required this.finding,
     this.compact = false,
-  }) : super(key: key);
+  });
 
   @override
   State<ChatFindingCard> createState() => _ChatFindingCardState();

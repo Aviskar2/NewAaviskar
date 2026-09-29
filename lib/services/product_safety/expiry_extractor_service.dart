@@ -146,7 +146,7 @@ class ExpiryExtractorService {
       int? y = int.tryParse(parts[2]);
 
       // If month is alphabetical e.g. 15/AUG/2024
-      if (m == null) m = _monthNameToNum(parts[1]);
+      m ??= _monthNameToNum(parts[1]);
 
       if (d != null && m != null && y != null) {
         if (y < 100) y += 2000;
@@ -162,7 +162,7 @@ class ExpiryExtractorService {
     if (parts.length == 2) {
       int? m = int.tryParse(parts[0]);
       int? y = int.tryParse(parts[1]);
-      if (m == null) m = _monthNameToNum(parts[0]);
+      m ??= _monthNameToNum(parts[0]);
 
       if (m != null && y != null) {
         if (y < 100) y += 2000;

@@ -17,10 +17,10 @@ class MainNavigation extends StatefulWidget {
   final ValueChanged<bool> onThemeChanged;
 
   const MainNavigation({
-    Key? key,
+    super.key,
     required this.isLightMode,
     required this.onThemeChanged,
-  }) : super(key: key);
+  });
 
   @override
   State<MainNavigation> createState() => MainNavigationState();

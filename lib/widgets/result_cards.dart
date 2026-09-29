@@ -12,11 +12,11 @@ class OcrResultCard extends StatelessWidget {
   final VoidCallback? onViewFull;
 
   const OcrResultCard({
-    Key? key,
+    super.key,
     required this.result,
     this.onTranslate,
     this.onViewFull,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -146,10 +146,10 @@ class BarcodeResultCard extends StatelessWidget {
   final VoidCallback? onOpenUrl;
 
   const BarcodeResultCard({
-    Key? key,
+    super.key,
     required this.result,
     this.onOpenUrl,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -267,12 +267,12 @@ class TranslationResultCard extends StatelessWidget {
   final String targetLang;
 
   const TranslationResultCard({
-    Key? key,
+    super.key,
     required this.originalText,
     required this.translatedText,
     required this.sourceLang,
     required this.targetLang,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -24,12 +24,12 @@ class OcrResultScreen extends StatefulWidget {
   final OcrService? ocrService;
 
   const OcrResultScreen({
-    Key? key,
+    super.key,
     required this.result,
     required this.historyService,
     this.autoTranslate = false,
     this.ocrService,
-  }) : super(key: key);
+  });
 
   @override
   State<OcrResultScreen> createState() => _OcrResultScreenState();

@@ -14,11 +14,11 @@ class ScannerHubScreen extends StatefulWidget {
   final int initialTab;
 
   const ScannerHubScreen({
-    Key? key,
+    super.key,
     required this.ocrService,
     required this.historyService,
     this.initialTab = 0,
-  }) : super(key: key);
+  });
 
   @override
   State<ScannerHubScreen> createState() => _ScannerHubScreenState();

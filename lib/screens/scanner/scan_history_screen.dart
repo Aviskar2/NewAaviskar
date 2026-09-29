@@ -12,8 +12,7 @@ import '../../widgets/scan_result_dialog.dart';
 class ScanHistoryScreen extends StatefulWidget {
   final ScanHistoryService historyService;
 
-  const ScanHistoryScreen({Key? key, required this.historyService})
-      : super(key: key);
+  const ScanHistoryScreen({super.key, required this.historyService});
 
   @override
   State<ScanHistoryScreen> createState() => _ScanHistoryScreenState();
@@ -253,7 +252,7 @@ class _HistoryList extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (ctx, i) {
         final item = items[i];
         return Dismissible(

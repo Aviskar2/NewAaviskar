@@ -2,6 +2,7 @@
 /// Provides cached government rules with source metadata.
 /// Attempts live GSTIN format/checksum validation offline.
 /// Attempts best-effort HTTP verification online — clearly marks LIVE vs CACHED.
+library;
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';

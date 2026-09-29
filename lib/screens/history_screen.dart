@@ -9,11 +9,11 @@ class HistoryScreen extends StatefulWidget {
   final ScanHistoryService? scanHistoryService;
 
   const HistoryScreen({
-    Key? key,
+    super.key,
     required this.historyItems,
     required this.onLoadChat,
     this.scanHistoryService,
-  }) : super(key: key);
+  });
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();

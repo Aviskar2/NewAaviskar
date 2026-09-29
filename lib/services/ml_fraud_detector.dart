@@ -2,6 +2,7 @@
 /// Implements lightweight anomaly detection using Z-score, Isolation Score,
 /// and pattern deviation — all computed locally with dart:math.
 /// No external ML dependencies required.
+library;
 
 import 'dart:math';
 import '../models/bill_model.dart';

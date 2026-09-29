@@ -19,8 +19,7 @@ import '../../widgets/scan_result_dialog.dart';
 class QrScannerScreen extends StatefulWidget {
   final ScanHistoryService historyService;
 
-  const QrScannerScreen({Key? key, required this.historyService})
-      : super(key: key);
+  const QrScannerScreen({super.key, required this.historyService});
 
   @override
   State<QrScannerScreen> createState() => _QrScannerScreenState();

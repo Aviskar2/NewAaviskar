@@ -1,4 +1,5 @@
 /// Government Scheme & Citizen Rights data models.
+library;
 
 enum SchemeCategory {
   health,

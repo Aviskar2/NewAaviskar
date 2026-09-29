@@ -16,7 +16,7 @@ import 'scheme_analytics_screen.dart';
 /// Redesigned Government Schemes & Rights Screen
 /// Implementing the modern Android Minimal Design System from Stitch MCP (Screen ec5f12c875f14910b49fe9e0298f7143).
 class GovernmentSchemesEntryScreen extends StatefulWidget {
-  const GovernmentSchemesEntryScreen({Key? key}) : super(key: key);
+  const GovernmentSchemesEntryScreen({super.key});
 
   @override
   State<GovernmentSchemesEntryScreen> createState() =>
@@ -2014,7 +2014,7 @@ class _GovernmentSchemesEntryScreenState
                             setState(() {});
                             if (_service.compareIds.length == 3 &&
                                 _service.isComparing(scheme.id)) {
-                              if (context.mounted) {
+                              if (mounted) {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(

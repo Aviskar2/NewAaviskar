@@ -861,8 +861,11 @@ Respond strictly in valid JSON matching this schema:
 
   double _calcLegalFreedomScore(OfferLetterDetails d) {
     double score = 100.0;
-    if (d.noticePeriodDays >= 90) score -= 25.0;
-    else if (d.noticePeriodDays >= 60) score -= 10.0;
+    if (d.noticePeriodDays >= 90) {
+      score -= 25.0;
+    } else if (d.noticePeriodDays >= 60) {
+      score -= 10.0;
+    }
 
     if (d.hasBond) score -= 35.0;
     if (d.hasNonCompete) score -= 25.0;
@@ -871,12 +874,19 @@ Respond strictly in valid JSON matching this schema:
 
   double _calcWorkLifeScore(OfferLetterDetails d) {
     double score = 70.0;
-    if (d.workMode.contains('Remote')) score += 25.0;
-    else if (d.workMode.contains('Hybrid')) score += 15.0;
-    else if (d.workMode.contains('6 Days')) score -= 35.0;
+    if (d.workMode.contains('Remote')) {
+      score += 25.0;
+    } else if (d.workMode.contains('Hybrid')) {
+      score += 15.0;
+    } else if (d.workMode.contains('6 Days')) {
+      score -= 35.0;
+    }
 
-    if ((d.annualLeaves ?? 20) >= 28) score += 10.0;
-    else if ((d.annualLeaves ?? 20) < 16) score -= 15.0;
+    if ((d.annualLeaves ?? 20) >= 28) {
+      score += 10.0;
+    } else if ((d.annualLeaves ?? 20) < 16) {
+      score -= 15.0;
+    }
 
     return score.clamp(10.0, 100.0);
   }

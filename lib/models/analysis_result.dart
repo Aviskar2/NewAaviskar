@@ -1,5 +1,6 @@
 /// Bill analysis result models.
 /// Contains findings, GSTIN verification, government sources.
+library;
 
 import 'bill_model.dart';
 

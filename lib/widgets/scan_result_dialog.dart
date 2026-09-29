@@ -11,11 +11,11 @@ class ScanResultDialog extends StatelessWidget {
   final VoidCallback? onOpenUrl;
 
   const ScanResultDialog({
-    Key? key,
+    super.key,
     required this.result,
     required this.onSaveToHistory,
     this.onOpenUrl,
-  }) : super(key: key);
+  });
 
   static Future<void> show(
     BuildContext context, {

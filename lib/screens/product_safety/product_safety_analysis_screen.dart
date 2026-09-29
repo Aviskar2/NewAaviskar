@@ -8,9 +8,9 @@ class ProductSafetyAnalysisScreen extends StatefulWidget {
   final ProductSafetyReport report;
 
   const ProductSafetyAnalysisScreen({
-    Key? key,
+    super.key,
     required this.report,
-  }) : super(key: key);
+  });
 
   @override
   State<ProductSafetyAnalysisScreen> createState() => _ProductSafetyAnalysisScreenState();

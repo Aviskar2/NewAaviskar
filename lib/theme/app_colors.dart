@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Semantic color tokens for ScanSure.
-/// Usage: Theme.of(context).extension<AppColors>()!.success
+/// Usage: `Theme.of(context).extension<AppColors>()!.success`
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
   // ─── Semantic Status Colors ──────────────────────────────────────────────

@@ -15,11 +15,11 @@ class BillAnalysisScreen extends StatefulWidget {
   final ScanHistoryService historyService;
 
   const BillAnalysisScreen({
-    Key? key,
+    super.key,
     required this.result,
     this.imagePath,
     required this.historyService,
-  }) : super(key: key);
+  });
 
   @override
   State<BillAnalysisScreen> createState() => _BillAnalysisScreenState();

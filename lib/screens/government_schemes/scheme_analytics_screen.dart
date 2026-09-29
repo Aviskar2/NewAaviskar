@@ -6,7 +6,7 @@ import '../../services/scheme_matcher.dart';
 
 class SchemeAnalyticsScreen extends StatefulWidget {
   final CitizenProfile profile;
-  const SchemeAnalyticsScreen({Key? key, required this.profile}) : super(key: key);
+  const SchemeAnalyticsScreen({super.key, required this.profile});
 
   @override
   State<SchemeAnalyticsScreen> createState() => _SchemeAnalyticsScreenState();

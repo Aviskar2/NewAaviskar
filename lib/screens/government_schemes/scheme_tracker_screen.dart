@@ -6,7 +6,7 @@ import '../../services/scheme_database.dart';
 import 'scheme_detail_screen.dart';
 
 class SchemeTrackerScreen extends StatefulWidget {
-  const SchemeTrackerScreen({Key? key}) : super(key: key);
+  const SchemeTrackerScreen({super.key});
 
   @override
   State<SchemeTrackerScreen> createState() => _SchemeTrackerScreenState();
@@ -300,9 +300,9 @@ class _SchemeTrackerScreenState extends State<SchemeTrackerScreen>
               leading: _buildStatusChip(statuses[i]),
               title: Text(labels[i]),
               onTap: () async {
-                await _service.setApplicationStatus(record.schemeId, statuses[i]);
                 Navigator.pop(ctx);
-                setState(() {});
+                await _service.setApplicationStatus(record.schemeId, statuses[i]);
+                if (mounted) setState(() {});
               },
             )),
             const SizedBox(height: 16),

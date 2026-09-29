@@ -2,6 +2,7 @@
 /// beyond GST arithmetic and charge analysis.
 /// Covers: round amounts, threshold abuse, phantom items, impossible dates,
 /// missing HSN/SAC, excessive discounts, and charge ratios.
+library;
 
 import '../models/bill_model.dart';
 import '../models/analysis_result.dart';
@@ -190,7 +191,7 @@ class PatternFraudDetector {
         explanation:
             'The invoice date ${_formatDate(date)} is after today\'s date (${_formatDate(now)}). '
             'A future-dated invoice is invalid and may indicate fraud.',
-        whatFound: '${_formatDate(date)}',
+        whatFound: _formatDate(date),
         whatExpected: 'Date on or before ${_formatDate(now)}',
         recommendation: 'This invoice is not valid — do not pay until the date is corrected.',
         category: 'Pattern',
@@ -206,7 +207,7 @@ class PatternFraudDetector {
         explanation:
             'The invoice date ${_formatDate(date)} is over a year old. '
             'Old invoices may be recycled or reused fraudulently.',
-        whatFound: '${_formatDate(date)}',
+        whatFound: _formatDate(date),
         recommendation: 'Verify this is a current invoice, not a recycled old one.',
         category: 'Pattern',
       ));

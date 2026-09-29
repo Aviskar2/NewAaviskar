@@ -22,11 +22,11 @@ class TranslationScreen extends StatefulWidget {
   final OcrService? ocrService;
 
   const TranslationScreen({
-    Key? key,
+    super.key,
     required this.initialText,
     required this.historyService,
     this.ocrService,
-  }) : super(key: key);
+  });
 
   @override
   State<TranslationScreen> createState() => _TranslationScreenState();

@@ -64,6 +64,16 @@ class ApiConfig {
   static const String geminiBaseUrl =
       'https://generativelanguage.googleapis.com/v1beta';
 
+  /// Candidate Gemini models in fallback order.
+  static const List<String> geminiCandidateModels = [
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-2.5-flash-lite',
+    'gemini-flash-latest',
+  ];
+
   /// Optimal fast model with native reasoning, high OCR visual acuity & Indian law capability.
   static const String geminiModel = 'gemini-3.6-flash';
 

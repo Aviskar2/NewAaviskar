@@ -10,7 +10,7 @@ Future<void> main() async {
 }
 
 class ScanSureApp extends StatefulWidget {
-  const ScanSureApp({Key? key}) : super(key: key);
+  const ScanSureApp({super.key});
 
   @override
   State<ScanSureApp> createState() => _ScanSureAppState();

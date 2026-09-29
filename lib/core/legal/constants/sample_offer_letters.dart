@@ -1,4 +1,5 @@
 /// Realistic Indian Employment Offer Letters for Testing and Demonstration.
+library;
 
 class SampleOfferLetters {
   /// Previous Company Offer Letter (Stable, Fair Terms, Lower Headline CTC)

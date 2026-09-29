@@ -8,9 +8,9 @@ class MedicineAnalysisScreen extends StatefulWidget {
   final MedicineSafetyReport report;
 
   const MedicineAnalysisScreen({
-    Key? key,
+    super.key,
     required this.report,
-  }) : super(key: key);
+  });
 
   @override
   State<MedicineAnalysisScreen> createState() => _MedicineAnalysisScreenState();

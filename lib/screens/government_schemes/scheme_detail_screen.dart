@@ -11,10 +11,10 @@ class SchemeDetailScreen extends StatefulWidget {
   final CitizenProfile profile;
 
   const SchemeDetailScreen({
-    Key? key,
+    super.key,
     required this.scheme,
     required this.profile,
-  }) : super(key: key);
+  });
 
   @override
   State<SchemeDetailScreen> createState() => _SchemeDetailScreenState();

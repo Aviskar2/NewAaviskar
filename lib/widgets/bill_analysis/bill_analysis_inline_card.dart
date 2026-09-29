@@ -1,5 +1,6 @@
 /// ChatGPT-style inline bill analysis result card.
 /// Renders directly in the chat stream with progressive disclosure.
+library;
 
 import 'package:flutter/material.dart';
 import '../../models/analysis_result.dart';
@@ -13,11 +14,11 @@ class BillAnalysisInlineCard extends StatefulWidget {
   final ValueChanged<String>? onFollowUp;
 
   const BillAnalysisInlineCard({
-    Key? key,
+    super.key,
     required this.result,
     this.onViewFullReport,
     this.onFollowUp,
-  }) : super(key: key);
+  });
 
   @override
   State<BillAnalysisInlineCard> createState() => _BillAnalysisInlineCardState();

@@ -1,5 +1,6 @@
 /// Structured bill data model.
 /// Populated by BillParserService from raw OCR text.
+library;
 
 enum BillType {
   restaurant,

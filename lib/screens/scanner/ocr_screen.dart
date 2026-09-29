@@ -16,12 +16,12 @@ class OcrScreen extends StatefulWidget {
   final bool autoTranslate;
 
   const OcrScreen({
-    Key? key,
+    super.key,
     required this.historyService,
     required this.ocrService,
     this.initialImagePath,
     this.autoTranslate = false,
-  }) : super(key: key);
+  });
 
   @override
   State<OcrScreen> createState() => _OcrScreenState();

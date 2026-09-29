@@ -1,4 +1,5 @@
 /// Charge analyzer — detects suspicious charges beyond GST arithmetic.
+library;
 
 import '../models/bill_model.dart';
 import '../models/analysis_result.dart';

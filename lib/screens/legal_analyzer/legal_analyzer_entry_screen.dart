@@ -87,7 +87,7 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
 
     // Collect all image paths for Gemini multimodal analysis
     final allImagePaths = <String>[
-      if (imagePaths != null) ...imagePaths,
+      ...?imagePaths,
       if (imagePath != null && imagePath.isNotEmpty &&
           (imagePaths == null || !imagePaths.contains(imagePath)))
         imagePath,
@@ -649,6 +649,36 @@ class _LegalAnalyzerEntryScreenState extends State<LegalAnalyzerEntryScreen> {
                   onTap: () {
                     Navigator.pop(ctx);
                     _pickDocxOrTxt();
+                  },
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDC2626).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.content_paste_rounded,
+                      color: Color(0xFFDC2626),
+                    ),
+                  ),
+                  title: const Text(
+                    'Paste Agreement Text',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Paste text directly from clipboard or document',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showPasteDialog();
                   },
                 ),
                 const SizedBox(height: 8),

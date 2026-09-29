@@ -3,7 +3,7 @@ import '../../models/government_scheme_model.dart';
 import '../../services/scheme_service.dart';
 
 class SchemeCompareScreen extends StatefulWidget {
-  const SchemeCompareScreen({Key? key}) : super(key: key);
+  const SchemeCompareScreen({super.key});
 
   @override
   State<SchemeCompareScreen> createState() => _SchemeCompareScreenState();

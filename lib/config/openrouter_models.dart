@@ -112,9 +112,7 @@ class OpenRouterModelDirectory {
       _textModels = fallbackTextModels;
       _fetchedAt ??= DateTime.now();
     }
-    if (_visionModels == null) {
-      _visionModels = fallbackVisionModels;
-    }
+    _visionModels ??= fallbackVisionModels;
   }
 
   static Future<void> _discover() async {
