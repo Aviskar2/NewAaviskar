@@ -344,7 +344,7 @@ class _OfferLetterComparisonScreenState
           ),
         ],
       ),
-    );
+    ).whenComplete(controller.dispose);
   }
 
   void _loadDemoOffers() {

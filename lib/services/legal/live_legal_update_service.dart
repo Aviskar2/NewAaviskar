@@ -38,6 +38,13 @@ class LiveSyncReport {
 }
 
 class LiveLegalUpdateService {
+  // KNOWN ISSUE: these keys retain the app's pre-rename "nyayasathi" prefix.
+  // NOT renamed here intentionally: SharedPreferences keys are a persistence
+  // contract — changing the string would silently orphan any laws a user's
+  // installed app already synced and saved under the old key (a data-loss
+  // migration hazard), for a purely cosmetic gain. If renamed later, ship an
+  // explicit one-time migration that reads the old key, writes the new key,
+  // then removes the old key.
   static const String _prefsKey = 'nyayasathi_dynamic_indian_laws_v1';
   static const String _lastSyncKey = 'nyayasathi_laws_last_sync_timestamp';
 

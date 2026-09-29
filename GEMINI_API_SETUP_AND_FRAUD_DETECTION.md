@@ -1,6 +1,6 @@
 # Gemini AI Fraud Detection & API Configuration Guide
 
-This document explains how **Google Gemini AI** is integrated into the NyayaSathi / Avishkar application for real-time visual invoice & legal document fraud detection, where the API keys are stored, how the fallback system works, and how recent performance and encoding issues were resolved.
+This document explains how **Google Gemini AI** is integrated into the ScanSure application for real-time visual invoice & legal document fraud detection, where the API keys are stored, how the fallback system works, and how recent performance and encoding issues were resolved.
 
 ---
 
@@ -16,8 +16,8 @@ The application centrally manages all cloud intelligence and fraud detection API
   ```
   This key connects directly to Google Generative Language endpoints:
   - **Base URL**: `https://generativelanguage.googleapis.com/v1beta`
-  - **Default Model**: `gemini-3.6-flash` (fast, native reasoning, Indian law and visual invoice recognition)
-  - **Automatic Fallbacks**: `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro-preview`
+  - **Model fallback chain**: defined once in `ApiConfig.geminiCandidateModels` (`lib/config/api_config.dart`) and shared by every Gemini call site (`GeminiFraudService`, `OfferLetterAnalyzerService`) — currently `gemini-3.8-flash` → `gemini-3.6-flash` → `gemini-flash-latest` (a rolling alias that always resolves to Google's current default Flash model).
+  - Previously each service hardcoded its own model list independently; two of the three lists referenced models Google has since deprecated/shut down (`gemini-1.5-flash`, `gemini-2.0-flash`, `gemini-2.5-flash`). Always update `ApiConfig.geminiCandidateModels` — never add a new hardcoded list in a service file.
 
 - **OpenRouter API Key (Secondary Fallback)**:
   ```dart
