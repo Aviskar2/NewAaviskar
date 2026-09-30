@@ -1,10 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:scan_sure/main.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('ScanSure Home Screen displays safety tools and header', (WidgetTester tester) async {
-    // Build app
+    // Build app and advance past 2-second splash screen and transition
     await tester.pumpWidget(const ScanSureApp());
+    await tester.pump(const Duration(milliseconds: 2500));
     await tester.pumpAndSettle();
 
     // Verify initial header and safety pillar buttons
@@ -18,6 +24,7 @@ void main() {
 
   testWidgets('Tapping Bill & GST card opens Bill Analyzer screen', (WidgetTester tester) async {
     await tester.pumpWidget(const ScanSureApp());
+    await tester.pump(const Duration(milliseconds: 2500));
     await tester.pumpAndSettle();
 
     // Tap on Bill & GST card

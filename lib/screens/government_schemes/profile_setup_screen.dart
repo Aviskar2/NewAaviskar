@@ -253,6 +253,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     key: ValueKey('gender_$_gender'),
+                    isExpanded: true,
                     initialValue: _genders.contains(_gender) ? _gender : _genders.first,
                     decoration: InputDecoration(
                       labelText: 'Gender',
@@ -263,7 +264,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                           const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                     ),
                     items: _genders.map((g) {
-                      return DropdownMenuItem(value: g, child: Text(g));
+                      return DropdownMenuItem(
+                        value: g,
+                        child: Text(g, overflow: TextOverflow.ellipsis),
+                      );
                     }).toList(),
                     onChanged: (v) {
                       if (v != null) {
@@ -288,6 +292,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             // State
             DropdownButtonFormField<String>(
               key: ValueKey('state_$_state'),
+              isExpanded: true,
               initialValue: SchemeDatabase.indianStates.contains(_state) ? _state : null,
               decoration: InputDecoration(
                 labelText: 'State / UT',
@@ -298,7 +303,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               ),
               items: SchemeDatabase.indianStates.map((s) {
-                return DropdownMenuItem(value: s, child: Text(s));
+                return DropdownMenuItem(
+                  value: s,
+                  child: Text(s, overflow: TextOverflow.ellipsis),
+                );
               }).toList(),
               onChanged: (v) => setState(() => _state = v ?? ''),
               validator: (v) => v == null || v.isEmpty ? 'Select your state' : null,
@@ -308,6 +316,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             // Occupation
             DropdownButtonFormField<String>(
               key: ValueKey('occupation_$_occupation'),
+              isExpanded: true,
               initialValue: _occupations.contains(_occupation) ? _occupation : null,
               decoration: InputDecoration(
                 labelText: 'Occupation',
@@ -318,7 +327,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               ),
               items: _occupations.map((o) {
-                return DropdownMenuItem(value: o, child: Text(o));
+                return DropdownMenuItem(
+                  value: o,
+                  child: Text(o, overflow: TextOverflow.ellipsis),
+                );
               }).toList(),
               onChanged: (v) => setState(() => _occupation = v ?? ''),
             ),

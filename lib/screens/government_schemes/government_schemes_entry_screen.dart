@@ -6,12 +6,8 @@ import '../../models/government_scheme_model.dart';
 import '../../services/scheme_matcher.dart';
 import '../../services/scheme_database.dart';
 import '../../services/scheme_service.dart';
-import '../../utils/url_launcher_util.dart';
 import 'scheme_detail_screen.dart';
-import 'profile_setup_screen.dart';
-import 'scheme_compare_screen.dart';
 import 'scheme_tracker_screen.dart';
-import 'scheme_analytics_screen.dart';
 
 /// Redesigned Government Schemes & Rights Screen
 /// Implementing the modern Android Minimal Design System from Stitch MCP (Screen ec5f12c875f14910b49fe9e0298f7143).
@@ -24,21 +20,22 @@ class GovernmentSchemesEntryScreen extends StatefulWidget {
 }
 
 class _GovernmentSchemesEntryScreenState
-    extends State<GovernmentSchemesEntryScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
+    extends State<GovernmentSchemesEntryScreen> {
   // Citizen Profile and Service
   CitizenProfile _profile = const CitizenProfile();
   final SchemeService _service = SchemeService();
-  List<SchemeMatchResult> _matchedSchemes = [];
+  List<SchemeMatchResult> _appliedSchemes = [];
+
+  // Progressive Loading State
+  int _displayedBatchCount = 10;
+  bool _isLoadingMore = false;
 
   // Search & Filter State
   String _searchQuery = '';
   String _selectedScope = 'All'; // 'All', 'Central', 'State'
   SchemeCategory? _selectedCategory;
 
-  // Inline Eligibility & Benefit Matcher State
+  // Inline Eligibility & Benefit Matcher State (Selection State)
   String _filterState = 'All States';
   String _filterOccupation = 'All Occupations';
   String _filterIncome = 'Any Income';
@@ -56,14 +53,30 @@ class _GovernmentSchemesEntryScreenState
   bool _filterStudent = false;
 
   bool _isMoreFiltersExpanded = false;
+  bool _isMatcherExpanded = false;
   bool _filtersAppliedFeedback = false;
 
   final ScrollController _scrollController = ScrollController();
 
+  int get _activeMoreFiltersCount {
+    int count = 0;
+    if (_filterBPL) count++;
+    if (_filterFarmer) count++;
+    if (_filterSCST) count++;
+    if (_filterOBC) count++;
+    if (_filterPwD) count++;
+    if (_filterWomen || _filterWidow) count++;
+    if (_filterMinority) count++;
+    if (_filterStudent) count++;
+    if (_filterOccupation == 'Daily Wage / Unorganized') count++;
+    return count;
+  }
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _scrollController.addListener(_onScroll);
+    _appliedSchemes = _computeMatchingSchemes();
     _service.load().then((_) {
       if (mounted) setState(() {});
     });
@@ -72,9 +85,40 @@ class _GovernmentSchemesEntryScreenState
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (currentScroll >= maxScroll - 200) {
+      _loadMoreSchemes();
+    }
+  }
+
+  void _loadMoreSchemes() {
+    final total = _filteredSchemes.length;
+    if (_isLoadingMore || _displayedBatchCount >= total) return;
+
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    Future.delayed(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      setState(() {
+        _displayedBatchCount = (_displayedBatchCount + 10).clamp(0, total);
+        _isLoadingMore = false;
+      });
+    });
+  }
+
+  void _resetPagination() {
+    _displayedBatchCount = 10;
+    _isLoadingMore = false;
   }
 
   Future<void> _loadSavedProfile() async {
@@ -127,13 +171,20 @@ class _GovernmentSchemesEntryScreenState
           _filterMinority = profile.isMinority;
           _filterStudent = profile.isStudent;
 
-          _recomputeMatches();
+          _appliedSchemes = _computeMatchingSchemes();
+          _resetPagination();
         });
       } catch (_) {
-        _recomputeMatches();
+        setState(() {
+          _appliedSchemes = _computeMatchingSchemes();
+          _resetPagination();
+        });
       }
     } else {
-      _recomputeMatches();
+      setState(() {
+        _appliedSchemes = _computeMatchingSchemes();
+        _resetPagination();
+      });
     }
   }
 
@@ -157,7 +208,6 @@ class _GovernmentSchemesEntryScreenState
   }
 
   CitizenProfile _buildEffectiveMatcherProfile() {
-    // If user has a permanent profile and hasn't changed filterState or flags, use it
     int age = _profile.age > 0 ? _profile.age : 35;
     String gender = _profile.gender;
 
@@ -196,22 +246,219 @@ class _GovernmentSchemesEntryScreenState
       state: state,
       occupation: occupation,
       isBPL: _filterBPL,
-      isFarmer: _filterFarmer,
+      isFarmer: _filterFarmer || _filterOccupation == 'Farmer / Agri Worker',
       isSCST: _filterSCST,
       isDisabled: _filterPwD,
       isWoman: _filterWomen || gender == 'Female',
       isWidow: _filterWidow,
       isMinority: _filterMinority,
-      isStudent: _filterStudent,
+      isStudent: _filterStudent || _filterOccupation == 'Student / Youth',
       isSeniorCitizen: age >= 60,
     );
   }
 
-  void _recomputeMatches() {
+  /// Evaluates whether a [scheme] satisfies all currently selected criteria.
+  bool _isSchemeEligible(GovernmentScheme scheme) {
+    final elig = scheme.eligibility;
+
+    // 1. STATE / UT FILTER
+    if (_filterState != 'All States') {
+      if (elig.eligibleStates.isNotEmpty) {
+        if (!elig.eligibleStates.contains(_filterState)) {
+          return false;
+        }
+      } else if (scheme.level == SchemeLevel.state) {
+        if (scheme.stateCode != null && scheme.stateCode != 'IN') {
+          return false;
+        }
+      }
+    }
+
+    // 2. AGE & GENDER FILTER
+    if (_filterAgeGender == 'Male (All ages)') {
+      if (elig.gender == EligibilityGender.female) return false;
+      if (elig.isWidowRequired) return false;
+    } else if (_filterAgeGender == 'Female (All ages)') {
+      if (elig.gender == EligibilityGender.male) return false;
+    } else if (_filterAgeGender == 'Senior Citizen (60+)') {
+      if (elig.maxAge != null && elig.maxAge! < 60) return false;
+      if (elig.minAge != null && elig.minAge! > 60) return false;
+    } else if (_filterAgeGender == 'Youth (18–35 yrs)') {
+      if (elig.minAge != null && elig.minAge! > 35) return false;
+      if (elig.maxAge != null && elig.maxAge! < 18) return false;
+    } else if (_filterAgeGender == 'Child (<18 yrs)') {
+      if (elig.minAge != null && elig.minAge! >= 18) return false;
+    }
+
+    // 3. OCCUPATION FILTER
+    if (_filterOccupation == 'Student / Youth') {
+      if (elig.isFarmerRequired && !elig.isStudentRequired) return false;
+      final bool matchesStudent = elig.isStudentRequired ||
+          scheme.category == SchemeCategory.education ||
+          elig.occupations.any((o) {
+            final lower = o.toLowerCase();
+            return lower.contains('student') || lower.contains('youth');
+          }) ||
+          (elig.occupationRequired != null &&
+              elig.occupationRequired!.toLowerCase().contains('student'));
+      if (!matchesStudent) return false;
+    } else if (_filterOccupation == 'Farmer / Agri Worker') {
+      if (elig.isStudentRequired && !elig.isFarmerRequired) return false;
+      final bool matchesFarmer = elig.isFarmerRequired ||
+          scheme.category == SchemeCategory.agriculture ||
+          elig.occupations.any((o) {
+            final lower = o.toLowerCase();
+            return lower.contains('farm') || lower.contains('agri');
+          }) ||
+          (elig.occupationRequired != null &&
+              elig.occupationRequired!.toLowerCase().contains('farm'));
+      if (!matchesFarmer) return false;
+    } else if (_filterOccupation == 'Small Business / MSME') {
+      if (elig.isFarmerRequired || elig.isStudentRequired) return false;
+      final bool matchesBusiness = scheme.category == SchemeCategory.finance ||
+          scheme.category == SchemeCategory.employment ||
+          elig.occupations.any((o) {
+            final lower = o.toLowerCase();
+            return lower.contains('business') ||
+                lower.contains('msme') ||
+                lower.contains('artisan') ||
+                lower.contains('vendor') ||
+                lower.contains('entrepreneur');
+          }) ||
+          (elig.occupationRequired != null &&
+              (elig.occupationRequired!.toLowerCase().contains('artisan') ||
+                  elig.occupationRequired!.toLowerCase().contains('business'))) ||
+          scheme.id.contains('mudra') ||
+          scheme.id.contains('pmegp') ||
+          scheme.id.contains('svanidhi') ||
+          scheme.id.contains('vishwakarma');
+      if (!matchesBusiness) return false;
+    } else if (_filterOccupation == 'Daily Wage / Unorganized') {
+      if (elig.isFarmerRequired || elig.isStudentRequired) return false;
+      final bool matchesWorker = elig.occupations.any((o) {
+            final lower = o.toLowerCase();
+            return lower.contains('wage') ||
+                lower.contains('unorganized') ||
+                lower.contains('worker') ||
+                lower.contains('labor');
+          }) ||
+          (elig.occupationRequired != null &&
+              (elig.occupationRequired!.toLowerCase().contains('worker') ||
+                  elig.occupationRequired!.toLowerCase().contains('artisan') ||
+                  elig.occupationRequired!.toLowerCase().contains('fisherman'))) ||
+          scheme.id.contains('e_shram') ||
+          scheme.id.contains('nrega') ||
+          scheme.id.contains('pm_kmy') ||
+          scheme.id.contains('pmsym');
+      if (!matchesWorker) return false;
+    } else if (_filterOccupation == 'Salaried / Pensioner') {
+      if (elig.isFarmerRequired || elig.isStudentRequired) return false;
+      final bool matchesPension = scheme.category == SchemeCategory.pension ||
+          scheme.id.contains('apy') ||
+          scheme.id.contains('epfo') ||
+          scheme.id.contains('nps');
+      if (!matchesPension) return false;
+    }
+
+    // 4. ANNUAL INCOME FILTER
+    if (_filterIncome == '< ₹1.5 Lakh (BPL)') {
+      if (elig.maxAnnualIncome != null && elig.maxAnnualIncome! < 50000) {
+        return false;
+      }
+    } else if (_filterIncome == '₹1.5L – ₹3.0 Lakh') {
+      if (elig.isBPLRequired) return false;
+      if (elig.maxAnnualIncome != null && elig.maxAnnualIncome! < 150000) {
+        return false;
+      }
+    } else if (_filterIncome == '₹3.0L – ₹8.0 Lakh') {
+      if (elig.isBPLRequired) return false;
+      if (elig.maxAnnualIncome != null && elig.maxAnnualIncome! < 300000) {
+        return false;
+      }
+    } else if (_filterIncome == '> ₹8.0 Lakh') {
+      if (elig.isBPLRequired) return false;
+      if (elig.maxAnnualIncome != null && elig.maxAnnualIncome! < 800000) {
+        return false;
+      }
+    }
+
+    // 5. RESTRICTIVE ELIGIBILITY CONSTRAINTS (SC/ST, PwD, Widow, Minority)
+    if (elig.isSCSTRequired && !_filterSCST) return false;
+    if (elig.isDisabledRequired && !_filterPwD) return false;
+    if (elig.isMinorityRequired && !_filterMinority) return false;
+    if (elig.isWidowRequired && !_filterWidow) return false;
+
+    // 6. EXPLICIT MORE FILTERS TOGGLES
+    if (_filterBPL &&
+        !(elig.isBPLRequired ||
+            elig.categories.contains('BPL') ||
+            (elig.maxAnnualIncome != null && elig.maxAnnualIncome! <= 200000))) {
+      return false;
+    }
+    if (_filterFarmer &&
+        !(elig.isFarmerRequired || scheme.category == SchemeCategory.agriculture)) {
+      return false;
+    }
+    if (_filterSCST &&
+        !(elig.isSCSTRequired ||
+            elig.categories.any((c) =>
+                c.toUpperCase().contains('SC') ||
+                c.toUpperCase().contains('ST')))) {
+      return false;
+    }
+    if (_filterOBC &&
+        !elig.categories.any((c) => c.toUpperCase().contains('OBC'))) {
+      return false;
+    }
+    if (_filterPwD && !elig.isDisabledRequired) {
+      return false;
+    }
+    if ((_filterWomen || _filterWidow) &&
+        !(elig.gender == EligibilityGender.female || elig.isWidowRequired)) {
+      return false;
+    }
+    if (_filterMinority && !elig.isMinorityRequired) {
+      return false;
+    }
+    if (_filterStudent &&
+        !(elig.isStudentRequired || scheme.category == SchemeCategory.education)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /// Runs complete filtering operation against the full [SchemeDatabase.schemes] dataset.
+  List<SchemeMatchResult> _computeMatchingSchemes() {
+    final results = <SchemeMatchResult>[];
     final effectiveProfile = _buildEffectiveMatcherProfile();
-    setState(() {
-      _matchedSchemes = SchemeMatcher.matchAll(effectiveProfile);
-    });
+
+    for (final scheme in SchemeDatabase.schemes) {
+      if (_isSchemeEligible(scheme)) {
+        final scoreResult = SchemeMatcher.scoreScheme(scheme, effectiveProfile);
+        results.add(SchemeMatchResult(
+          scheme: scheme,
+          score: scoreResult.score > 0 ? scoreResult.score : 0.85,
+          reasons: scoreResult.reasons.isNotEmpty
+              ? scoreResult.reasons
+              : ['Meets all selected filter criteria'],
+        ));
+      }
+    }
+
+    results.sort((a, b) => b.score.compareTo(a.score));
+    return results;
+  }
+
+  /// Fast count calculation against the full scheme dataset for button display.
+  int _computeMatchingSchemesCount() {
+    int count = 0;
+    for (final scheme in SchemeDatabase.schemes) {
+      if (_isSchemeEligible(scheme)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   void _resetAllFilters() {
@@ -233,14 +480,16 @@ class _GovernmentSchemesEntryScreenState
       _filterWidow = false;
       _filterMinority = false;
       _filterStudent = false;
-      _recomputeMatches();
+      _appliedSchemes = _computeMatchingSchemes();
+      _resetPagination();
     });
   }
 
   void _onApplyMatcherClicked() {
     HapticFeedback.mediumImpact();
-    _recomputeMatches();
     setState(() {
+      _appliedSchemes = _computeMatchingSchemes();
+      _resetPagination();
       _filtersAppliedFeedback = true;
     });
     Future.delayed(const Duration(milliseconds: 1800), () {
@@ -266,12 +515,13 @@ class _GovernmentSchemesEntryScreenState
       _filterMinority = newProfile.isMinority;
       _filterStudent = newProfile.isStudent;
       _filterWomen = newProfile.isWoman;
-      _recomputeMatches();
+      _appliedSchemes = _computeMatchingSchemes();
+      _resetPagination();
     });
   }
 
   List<SchemeMatchResult> get _filteredSchemes {
-    var list = _matchedSchemes;
+    var list = _appliedSchemes;
 
     // Scope filter (All, Central, State)
     if (_selectedScope == 'Central') {
@@ -303,7 +553,7 @@ class _GovernmentSchemesEntryScreenState
 
   // Count helper for category chips
   int _countForCategory(SchemeCategory? category) {
-    var list = _matchedSchemes;
+    var list = _appliedSchemes;
     if (_selectedScope == 'Central') {
       list = list.where((r) => r.scheme.level == SchemeLevel.central).toList();
     } else if (_selectedScope == 'State') {
@@ -396,25 +646,15 @@ class _GovernmentSchemesEntryScreenState
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0A1628) : const Color(0xFFFAFAFA),
-      endDrawer: _buildDrawer(),
       body: SafeArea(
         child: Column(
           children: [
             // Top App Bar
             _buildTopAppBar(isDark),
 
-            // Tab Bar Switcher (Discover vs My Profile)
-            _buildTabSelector(isDark),
-
-            // Tab Views
+            // Discover Schemes Body
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildDiscoverTab(isDark),
-                  _buildProfileTab(),
-                ],
-              ),
+              child: _buildDiscoverTab(isDark),
             ),
           ],
         ),
@@ -490,107 +730,54 @@ class _GovernmentSchemesEntryScreenState
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          const SizedBox(width: 8),
 
-          // Profile Readiness Indicator
-          GestureDetector(
+          // Saved schemes
+          InkWell(
             onTap: () {
               HapticFeedback.lightImpact();
-              _tabController.animateTo(1);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SchemeTrackerScreen()),
+              ).then((_) {
+                if (mounted) setState(() {});
+              });
             },
+            borderRadius: BorderRadius.circular(20),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: _profile.hasProfile
-                    ? const Color(0xFFECFDF5)
-                    : const Color(0xFFFFFBEB),
+                color: isDark ? const Color(0xFF1E3A5F) : const Color(0xFFEFF6FF),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: _profile.hasProfile
-                      ? const Color(0xFFA7F3D0)
-                      : const Color(0xFFFDE68A),
+                  color: isDark ? const Color(0xFF2563EB) : const Color(0xFFBFDBFE),
                 ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    _profile.hasProfile
-                        ? Icons.check_circle_rounded
-                        : Icons.person_add_rounded,
+                    Icons.bookmark_rounded,
                     size: 13,
-                    color: _profile.hasProfile
-                        ? const Color(0xFF059669)
-                        : const Color(0xFFD97706),
+                    color: isDark
+                        ? const Color(0xFF93C5FD)
+                        : const Color(0xFF1D4ED8),
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    _profile.hasProfile
-                        ? _profile.name.split(' ').first
-                        : 'Set Profile',
+                    'Saved schemes',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: _profile.hasProfile
-                          ? const Color(0xFF059669)
-                          : const Color(0xFFD97706),
+                      color: isDark
+                          ? const Color(0xFFBFDBFE)
+                          : const Color(0xFF1D4ED8),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(width: 6),
-
-          // Open Drawer Button
-          Builder(
-            builder: (ctx) => IconButton(
-              icon: Icon(
-                Icons.menu_rounded,
-                size: 22,
-                color: isDark ? Colors.white70 : const Color(0xFF64748B),
-              ),
-              onPressed: () => Scaffold.of(ctx).openEndDrawer(),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── TAB SELECTOR ───────────────────────────────────────────────────────
-  Widget _buildTabSelector(bool isDark) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: TabBar(
-        controller: _tabController,
-        indicator: BoxDecoration(
-          color: const Color(0xFF0066CC),
-          borderRadius: BorderRadius.circular(9),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 4,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        indicatorSize: TabBarIndicatorSize.tab,
-        labelColor: Colors.white,
-        unselectedLabelColor: isDark ? Colors.white70 : const Color(0xFF475569),
-        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-        unselectedLabelStyle:
-            const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-        dividerColor: Colors.transparent,
-        tabs: const [
-          Tab(text: 'Discover Schemes'),
-          Tab(text: 'My Profile'),
         ],
       ),
     );
@@ -599,11 +786,14 @@ class _GovernmentSchemesEntryScreenState
   // ─── DISCOVER SCHEMES TAB ───────────────────────────────────────────────
   Widget _buildDiscoverTab(bool isDark) {
     final filtered = _filteredSchemes;
+    final displayedSchemes = filtered.take(_displayedBatchCount).toList();
 
     return RefreshIndicator(
       onRefresh: () async {
         await _service.load();
-        _recomputeMatches();
+        setState(() {
+          _appliedSchemes = _computeMatchingSchemes();
+        });
       },
       child: ListView(
         controller: _scrollController,
@@ -613,23 +803,89 @@ class _GovernmentSchemesEntryScreenState
           _buildSearchBox(isDark),
           const SizedBox(height: 12),
 
-          // 2. Quick Action Utilities Strip (Fixed replacement for overlapping Tools button)
-          _buildQuickToolsStrip(isDark),
-          const SizedBox(height: 14),
-
-          // 3. Compact Inline Eligibility & Benefit Matcher
+          // Optional eligibility matching stays available without crowding the list.
           _buildCompactEligibilityFilter(isDark),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
           // 4. Source & Category Filters
           _buildSourceAndCategoryFilters(isDark),
           const SizedBox(height: 12),
 
-          // 5. Schemes List
+          // 5. Schemes List (Progressive Loading in Batches of 5)
           if (filtered.isEmpty)
             _buildEmptyState(isDark)
-          else
-            ...filtered.map((r) => _buildSchemeCard(r, isDark)),
+          else ...[
+            ...displayedSchemes.map((r) => _buildSchemeCard(r, isDark)),
+
+            // Progressive Loading Indicator or Status
+            if (_isLoadingMore)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Color(0xFF0066CC)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Loading more schemes...',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color:
+                              isDark ? Colors.white60 : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (displayedSchemes.length < filtered.length)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 12),
+                child: Center(
+                  child: InkWell(
+                    onTap: _loadMoreSchemes,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: Text(
+                        'Showing ${displayedSchemes.length} of ${filtered.length} schemes • Scroll or tap for more',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color:
+                              isDark ? Colors.white60 : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else if (filtered.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 12),
+                child: Center(
+                  child: Text(
+                    'All ${filtered.length} matching schemes loaded',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -653,7 +909,10 @@ class _GovernmentSchemesEntryScreenState
         ],
       ),
       child: TextField(
-        onChanged: (v) => setState(() => _searchQuery = v),
+        onChanged: (v) => setState(() {
+          _searchQuery = v;
+          _resetPagination();
+        }),
         style: TextStyle(
           fontSize: 12.5,
           color: isDark ? Colors.white : const Color(0xFF0F172A),
@@ -672,7 +931,10 @@ class _GovernmentSchemesEntryScreenState
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear_rounded, size: 16),
-                  onPressed: () => setState(() => _searchQuery = ''),
+                  onPressed: () => setState(() {
+                    _searchQuery = '';
+                    _resetPagination();
+                  }),
                 )
               : null,
           border: InputBorder.none,
@@ -684,172 +946,45 @@ class _GovernmentSchemesEntryScreenState
     );
   }
 
-  // ─── 2. QUICK ACTION UTILITIES STRIP ────────────────────────────────────
-  Widget _buildQuickToolsStrip(bool isDark) {
-    final bookmarksCount = _service.bookmarks.length;
-    final pendingCount = _service.pendingCount;
-    final compareCount = _service.compareIds.length;
-
-    return Row(
-      children: [
-        // Saved Schemes
-        Expanded(
-          child: _buildQuickToolTile(
-            isDark: isDark,
-            icon: Icons.bookmark_rounded,
-            iconBg: isDark ? const Color(0xFF3B2B15) : const Color(0xFFFFFBEB),
-            iconColor: const Color(0xFFD97706),
-            title: 'Saved',
-            subtitle: '$bookmarksCount scheme${bookmarksCount == 1 ? '' : 's'}',
-            subtitleColor: const Color(0xFF64748B),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SchemeTrackerScreen()),
-              ).then((_) => setState(() {}));
-            },
-          ),
-        ),
-        const SizedBox(width: 8),
-
-        // Tracker
-        Expanded(
-          child: _buildQuickToolTile(
-            isDark: isDark,
-            icon: Icons.track_changes_rounded,
-            iconBg: isDark ? const Color(0xFF0F2C54) : const Color(0xFFEFF6FF),
-            iconColor: const Color(0xFF0066CC),
-            title: 'Tracker',
-            subtitle: '$pendingCount pending',
-            subtitleColor: const Color(0xFFD97706),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SchemeTrackerScreen()),
-              ).then((_) => setState(() {}));
-            },
-          ),
-        ),
-        const SizedBox(width: 8),
-
-        // Compare
-        Expanded(
-          child: _buildQuickToolTile(
-            isDark: isDark,
-            icon: Icons.compare_arrows_rounded,
-            iconBg: isDark ? const Color(0xFF2E1C4E) : const Color(0xFFFAF5FF),
-            iconColor: const Color(0xFF7C3AED),
-            title: 'Compare',
-            subtitle: '$compareCount/3 added',
-            subtitleColor: const Color(0xFF64748B),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SchemeCompareScreen()),
-              ).then((_) => setState(() {}));
-            },
-          ),
-        ),
-        const SizedBox(width: 8),
-
-        // Insights
-        Expanded(
-          child: _buildQuickToolTile(
-            isDark: isDark,
-            icon: Icons.bar_chart_rounded,
-            iconBg: isDark ? const Color(0xFF0E382A) : const Color(0xFFECFDF5),
-            iconColor: const Color(0xFF059669),
-            title: 'Insights',
-            subtitle: _profile.hasProfile ? 'Personal' : 'High fit',
-            subtitleColor: const Color(0xFF059669),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SchemeAnalyticsScreen(profile: _profile),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuickToolTile({
-    required bool isDark,
-    required IconData icon,
-    required Color iconBg,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required Color subtitleColor,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF132238) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-              blurRadius: 3,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: iconBg,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, size: 16, color: iconColor),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white : const Color(0xFF1E293B),
-              ),
-            ),
-            const SizedBox(height: 1),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w500,
-                color: subtitleColor,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ─── 3. COMPACT INLINE ELIGIBILITY & BENEFIT MATCHER ────────────────────
   Widget _buildCompactEligibilityFilter(bool isDark) {
+    if (!_isMatcherExpanded) {
+      return InkWell(
+        onTap: () => setState(() => _isMatcherExpanded = true),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF132238) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.tune_rounded, size: 18, color: Color(0xFF0066CC)),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  _activeMoreFiltersCount > 0
+                      ? 'Personalize results · $_activeMoreFiltersCount filters active'
+                      : 'Personalize results',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : const Color(0xFF334155),
+                  ),
+                ),
+              ),
+              Icon(Icons.expand_more_rounded,
+                  size: 20, color: isDark ? Colors.white60 : const Color(0xFF64748B)),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -923,6 +1058,12 @@ class _GovernmentSchemesEntryScreenState
                   ),
                 ),
               ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Collapse filters',
+                onPressed: () => setState(() => _isMatcherExpanded = false),
+                icon: const Icon(Icons.expand_less_rounded, size: 20),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -956,7 +1097,6 @@ class _GovernmentSchemesEntryScreenState
                         if (val != null) {
                           setState(() {
                             _filterState = val;
-                            _recomputeMatches();
                           });
                         }
                       },
@@ -996,13 +1136,6 @@ class _GovernmentSchemesEntryScreenState
                         if (val != null) {
                           setState(() {
                             _filterOccupation = val;
-                            if (val == 'Farmer / Agri Worker') {
-                              _filterFarmer = true;
-                            }
-                            if (val == 'Student / Youth') {
-                              _filterStudent = true;
-                            }
-                            _recomputeMatches();
                           });
                         }
                       },
@@ -1046,10 +1179,6 @@ class _GovernmentSchemesEntryScreenState
                         if (val != null) {
                           setState(() {
                             _filterIncome = val;
-                            if (val == '< ₹1.5 Lakh (BPL)') {
-                              _filterBPL = true;
-                            }
-                            _recomputeMatches();
                           });
                         }
                       },
@@ -1089,10 +1218,6 @@ class _GovernmentSchemesEntryScreenState
                         if (val != null) {
                           setState(() {
                             _filterAgeGender = val;
-                            if (val == 'Female (All ages)') {
-                              _filterWomen = true;
-                            }
-                            _recomputeMatches();
                           });
                         }
                       },
@@ -1102,95 +1227,9 @@ class _GovernmentSchemesEntryScreenState
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          // Social Category & Vulnerabilities Chips
-          Text(
-            'SOCIAL CATEGORY & VULNERABILITIES',
-            style: TextStyle(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w700,
-              color: isDark ? Colors.white60 : const Color(0xFF64748B),
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _buildFilterToggleChip(
-                isDark: isDark,
-                label: 'BPL / Antyodaya',
-                isSelected: _filterBPL,
-                onTap: () {
-                  setState(() {
-                    _filterBPL = !_filterBPL;
-                    _recomputeMatches();
-                  });
-                },
-              ),
-              _buildFilterToggleChip(
-                isDark: isDark,
-                label: 'Small / Marginal Farmer (<2 Ha)',
-                isSelected: _filterFarmer,
-                onTap: () {
-                  setState(() {
-                    _filterFarmer = !_filterFarmer;
-                    _recomputeMatches();
-                  });
-                },
-              ),
-              _buildFilterToggleChip(
-                isDark: isDark,
-                label: 'SC / ST',
-                isSelected: _filterSCST,
-                onTap: () {
-                  setState(() {
-                    _filterSCST = !_filterSCST;
-                    _recomputeMatches();
-                  });
-                },
-              ),
-              _buildFilterToggleChip(
-                isDark: isDark,
-                label: 'OBC',
-                isSelected: _filterOBC,
-                onTap: () {
-                  setState(() {
-                    _filterOBC = !_filterOBC;
-                    _recomputeMatches();
-                  });
-                },
-              ),
-              _buildFilterToggleChip(
-                isDark: isDark,
-                label: 'Person with Disability (PwD)',
-                isSelected: _filterPwD,
-                onTap: () {
-                  setState(() {
-                    _filterPwD = !_filterPwD;
-                    _recomputeMatches();
-                  });
-                },
-              ),
-              _buildFilterToggleChip(
-                isDark: isDark,
-                label: 'Women / Widow',
-                isSelected: _filterWomen || _filterWidow,
-                onTap: () {
-                  setState(() {
-                    _filterWomen = !_filterWomen;
-                    _filterWidow = !_filterWidow;
-                    _recomputeMatches();
-                  });
-                },
-              ),
-            ],
-          ),
-
-          // Expandable More Filters Toggle
-          const SizedBox(height: 8),
+          // Expandable More Filters Toggle (Contains Social Category & Vulnerabilities)
           InkWell(
             onTap: () {
               setState(() {
@@ -1199,7 +1238,7 @@ class _GovernmentSchemesEntryScreenState
             },
             borderRadius: BorderRadius.circular(8),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(8),
@@ -1216,18 +1255,20 @@ class _GovernmentSchemesEntryScreenState
                         Icon(
                           _isMoreFiltersExpanded
                               ? Icons.remove_rounded
-                              : Icons.add_rounded,
-                          size: 14,
-                          color: const Color(0xFF64748B),
+                              : Icons.tune_rounded,
+                          size: 15,
+                          color: const Color(0xFF0066CC),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'More Filters (Minority, Student, Unorganized)',
+                            'More Filters (Social Category & Vulnerabilities)',
                             style: TextStyle(
-                              fontSize: 10.5,
+                              fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white70 : const Color(0xFF475569),
+                              color: isDark
+                                  ? Colors.white70
+                                  : const Color(0xFF334155),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1236,7 +1277,26 @@ class _GovernmentSchemesEntryScreenState
                       ],
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  if (_activeMoreFiltersCount > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDBEAFE),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$_activeMoreFiltersCount active',
+                        style: const TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0066CC),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 4),
                   Icon(
                     _isMoreFiltersExpanded
                         ? Icons.keyboard_arrow_up_rounded
@@ -1249,6 +1309,7 @@ class _GovernmentSchemesEntryScreenState
             ),
           ),
 
+          // Expanded More Filters: All Social Categories & Vulnerabilities Chips
           if (_isMoreFiltersExpanded) ...[
             const SizedBox(height: 8),
             Wrap(
@@ -1257,12 +1318,72 @@ class _GovernmentSchemesEntryScreenState
               children: [
                 _buildFilterToggleChip(
                   isDark: isDark,
+                  label: 'BPL / Antyodaya',
+                  isSelected: _filterBPL,
+                  onTap: () {
+                    setState(() {
+                      _filterBPL = !_filterBPL;
+                    });
+                  },
+                ),
+                _buildFilterToggleChip(
+                  isDark: isDark,
+                  label: 'Small / Marginal Farmer (≤2 Ha)',
+                  isSelected: _filterFarmer,
+                  onTap: () {
+                    setState(() {
+                      _filterFarmer = !_filterFarmer;
+                    });
+                  },
+                ),
+                _buildFilterToggleChip(
+                  isDark: isDark,
+                  label: 'SC / ST',
+                  isSelected: _filterSCST,
+                  onTap: () {
+                    setState(() {
+                      _filterSCST = !_filterSCST;
+                    });
+                  },
+                ),
+                _buildFilterToggleChip(
+                  isDark: isDark,
+                  label: 'OBC',
+                  isSelected: _filterOBC,
+                  onTap: () {
+                    setState(() {
+                      _filterOBC = !_filterOBC;
+                    });
+                  },
+                ),
+                _buildFilterToggleChip(
+                  isDark: isDark,
+                  label: 'Person with Disability (PwD)',
+                  isSelected: _filterPwD,
+                  onTap: () {
+                    setState(() {
+                      _filterPwD = !_filterPwD;
+                    });
+                  },
+                ),
+                _buildFilterToggleChip(
+                  isDark: isDark,
+                  label: 'Women / Widow',
+                  isSelected: _filterWomen || _filterWidow,
+                  onTap: () {
+                    setState(() {
+                      _filterWomen = !_filterWomen;
+                      _filterWidow = !_filterWidow;
+                    });
+                  },
+                ),
+                _buildFilterToggleChip(
+                  isDark: isDark,
                   label: 'Minority Community',
                   isSelected: _filterMinority,
                   onTap: () {
                     setState(() {
                       _filterMinority = !_filterMinority;
-                      _recomputeMatches();
                     });
                   },
                 ),
@@ -1273,13 +1394,12 @@ class _GovernmentSchemesEntryScreenState
                   onTap: () {
                     setState(() {
                       _filterStudent = !_filterStudent;
-                      _recomputeMatches();
                     });
                   },
                 ),
                 _buildFilterToggleChip(
                   isDark: isDark,
-                  label: 'Daily Wage / Shramik',
+                  label: 'Daily Wage / Unorganized',
                   isSelected:
                       _filterOccupation == 'Daily Wage / Unorganized',
                   onTap: () {
@@ -1288,7 +1408,6 @@ class _GovernmentSchemesEntryScreenState
                           (_filterOccupation == 'Daily Wage / Unorganized')
                               ? 'All Occupations'
                               : 'Daily Wage / Unorganized';
-                      _recomputeMatches();
                     });
                   },
                 ),
@@ -1328,8 +1447,8 @@ class _GovernmentSchemesEntryScreenState
                   Flexible(
                     child: Text(
                       _filtersAppliedFeedback
-                          ? 'Filters Applied (${_filteredSchemes.length} Matches)'
-                          : 'Show ${_filteredSchemes.length} Matching Schemes',
+                          ? 'Filters Applied (${_appliedSchemes.length} Matches)'
+                          : 'Show ${_computeMatchingSchemesCount()} Matching Schemes',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -1341,16 +1460,6 @@ class _GovernmentSchemesEntryScreenState
                   const SizedBox(width: 6),
                   const Icon(Icons.arrow_forward_rounded, size: 14),
                 ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Center(
-            child: Text(
-              'Based on official Ministry criteria • No sign-up required',
-              style: TextStyle(
-                fontSize: 9.5,
-                color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
               ),
             ),
           ),
@@ -1531,7 +1640,10 @@ class _GovernmentSchemesEntryScreenState
                 label: 'All',
                 count: _countForCategory(null),
                 isSelected: _selectedCategory == null,
-                onTap: () => setState(() => _selectedCategory = null),
+                onTap: () => setState(() {
+                  _selectedCategory = null;
+                  _resetPagination();
+                }),
               ),
               const SizedBox(width: 6),
 
@@ -1546,7 +1658,10 @@ class _GovernmentSchemesEntryScreenState
                     label: cat.label,
                     count: count,
                     isSelected: _selectedCategory == cat,
-                    onTap: () => setState(() => _selectedCategory = cat),
+                    onTap: () => setState(() {
+                      _selectedCategory = cat;
+                      _resetPagination();
+                    }),
                   ),
                 );
               }),
@@ -1562,7 +1677,10 @@ class _GovernmentSchemesEntryScreenState
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
-        setState(() => _selectedScope = scopeValue);
+        setState(() {
+          _selectedScope = scopeValue;
+          _resetPagination();
+        });
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
@@ -1680,461 +1798,130 @@ class _GovernmentSchemesEntryScreenState
   Widget _buildSchemeCard(SchemeMatchResult result, bool isDark) {
     final scheme = result.scheme;
     final isBookmarked = _service.isBookmarked(scheme.id);
-    final isComparing = _service.isComparing(scheme.id);
-
-    final keyBenefit = _getKeyBenefit(scheme);
-    final targetGroup = _getTargetGroup(scheme);
-    final deliveryMode = _getDeliveryMode(scheme);
-    final categoryTag = _getCategoryTag(scheme);
-
     final isCentral = scheme.level == SchemeLevel.central;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final mutedColor = isDark ? Colors.white70 : const Color(0xFF475569);
+
+    void openDetails() {
+      HapticFeedback.lightImpact();
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SchemeDetailScreen(scheme: scheme, profile: _profile),
+        ),
+      ).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF132238) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SchemeDetailScreen(
-                  scheme: scheme,
-                  profile: _profile,
-                ),
-              ),
-            );
-          },
-          borderRadius: BorderRadius.circular(16),
+          onTap: openDetails,
+          borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Row: Badges + Bookmark Action
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(scheme.category.emoji, style: const TextStyle(fontSize: 22)),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          // Level Badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: isCentral
-                                  ? const Color(0xFFDBEAFE)
-                                  : const Color(0xFFF3E8FF),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              isCentral ? 'CENTRAL SCHEME' : 'STATE SCHEME',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w700,
-                                color: isCentral
-                                    ? const Color(0xFF1D4ED8)
-                                    : const Color(0xFF7E22CE),
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ),
-
-                          // Category / Benefit Tag
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFFBEB),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              categoryTag,
-                              style: const TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFFB45309),
-                              ),
-                            ),
-                          ),
-
-                          // Match percent badge if scored
-                          if (result.score > 0.4)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFECFDF5),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '${result.matchPercent.round()}% Match',
-                                style: const TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF059669),
-                                ),
-                              ),
-                            ),
-                        ],
+                      child: Text(
+                        scheme.shortName.isNotEmpty
+                            ? '${scheme.name} (${scheme.shortName})'
+                            : scheme.name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          height: 1.3,
+                          color: textColor,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-
-                    // Bookmark Button
-                    InkWell(
-                      onTap: () async {
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                      padding: EdgeInsets.zero,
+                      tooltip: isBookmarked ? 'Remove saved scheme' : 'Save scheme',
+                      onPressed: () async {
                         HapticFeedback.lightImpact();
                         await _service.toggleBookmark(scheme.id);
-                        setState(() {});
+                        if (mounted) setState(() {});
                       },
-                      borderRadius: BorderRadius.circular(16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Icon(
-                          isBookmarked
-                              ? Icons.bookmark_rounded
-                              : Icons.bookmark_border_rounded,
-                          size: 20,
-                          color: isBookmarked
-                              ? const Color(0xFFD97706)
-                              : (isDark ? Colors.white38 : const Color(0xFF94A3B8)),
-                        ),
+                      icon: Icon(
+                        isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                        size: 20,
+                        color: isBookmarked
+                            ? const Color(0xFFD97706)
+                            : (isDark ? Colors.white38 : const Color(0xFF94A3B8)),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
-
-                // Scheme Name
-                Text(
-                  scheme.shortName.isNotEmpty
-                      ? '${scheme.name} (${scheme.shortName})'
-                      : scheme.name,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white : const Color(0xFF0F172A),
-                    height: 1.3,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 6),
-
-                // Plain Language Summary
                 Text(
                   scheme.plainLanguageSummary,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: isDark ? Colors.white70 : const Color(0xFF475569),
-                    height: 1.35,
-                  ),
+                  style: TextStyle(fontSize: 12, height: 1.4, color: mutedColor),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 10),
-
-                // Key Highlights Row (3 Structured Columns)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? const Color(0xFF1E293B)
-                        : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isDark
-                          ? const Color(0xFF334155)
-                          : const Color(0xFFE2E8F0),
+                Row(
+                  children: [
+                    _schemeTag(
+                      isCentral ? 'Central' : 'State',
+                      isCentral
+                          ? const Color(0xFF1D4ED8)
+                          : const Color(0xFF7E22CE),
+                      isCentral
+                          ? const Color(0xFFDBEAFE)
+                          : const Color(0xFFF3E8FF),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      // Highlight 1: Key Benefit
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'KEY BENEFIT',
-                              style: TextStyle(
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w700,
-                                color: isDark
-                                    ? Colors.white54
-                                    : const Color(0xFF94A3B8),
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              keyBenefit,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0066CC),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        width: 1,
-                        height: 22,
-                        color: isDark
-                            ? const Color(0xFF334155)
-                            : const Color(0xFFE2E8F0),
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
-                      ),
-
-                      // Highlight 2: Target Group
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'TARGET GROUP',
-                              style: TextStyle(
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w700,
-                                color: isDark
-                                    ? Colors.white54
-                                    : const Color(0xFF94A3B8),
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              targetGroup,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: isDark
-                                    ? Colors.white
-                                    : const Color(0xFF334155),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        width: 1,
-                        height: 22,
-                        color: isDark
-                            ? const Color(0xFF334155)
-                            : const Color(0xFFE2E8F0),
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
-                      ),
-
-                      // Highlight 3: Mode / Delivery
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'MODE',
-                              style: TextStyle(
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w700,
-                                color: isDark
-                                    ? Colors.white54
-                                    : const Color(0xFF94A3B8),
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              deliveryMode,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: isDark
-                                    ? Colors.white
-                                    : const Color(0xFF334155),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    const SizedBox(width: 6),
+                    _schemeTag(
+                      scheme.category.label,
+                      const Color(0xFFB45309),
+                      const Color(0xFFFFFBEB),
+                    ),
+                    const Spacer(),
+                    if (result.score > 0.4)
+                      Text('${result.matchPercent.round()}% match',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF059669),
+                          )),
+                  ],
                 ),
                 const SizedBox(height: 10),
-
-                // Bottom Action Buttons & Ministry
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
                   children: [
-                    Text(
-                      scheme.ministry,
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w500,
-                        color: isDark
-                            ? Colors.white54
-                            : const Color(0xFF64748B),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        // Compare icon toggle button
-                        InkWell(
-                          onTap: () async {
-                            HapticFeedback.lightImpact();
-                            await _service.toggleCompare(scheme.id);
-                            setState(() {});
-                            if (_service.compareIds.length == 3 &&
-                                _service.isComparing(scheme.id)) {
-                              if (mounted) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const SchemeCompareScreen(),
-                                  ),
-                                ).then((_) => setState(() {}));
-                              }
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: isComparing
-                                  ? const Color(0xFFFAF5FF)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: isComparing
-                                    ? const Color(0xFF7C3AED)
-                                    : (isDark
-                                        ? const Color(0xFF334155)
-                                        : const Color(0xFFE2E8F0)),
-                              ),
-                            ),
-                            child: Icon(
-                              isComparing
-                                  ? Icons.compare_arrows_rounded
-                                  : Icons.compare_arrows_outlined,
-                              size: 16,
-                              color: isComparing
-                                  ? const Color(0xFF7C3AED)
-                                  : (isDark
-                                      ? Colors.white60
-                                      : const Color(0xFF64748B)),
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-
-                        // Check Rules (View Details)
-                        OutlinedButton(
-                          onPressed: () {
-                            HapticFeedback.lightImpact();
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => SchemeDetailScreen(
-                                  scheme: scheme,
-                                  profile: _profile,
-                                ),
-                              ),
-                            );
-                          },
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(
-                              color: isDark
-                                  ? const Color(0xFF334155)
-                                  : const Color(0xFFE2E8F0),
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
-                            minimumSize: Size.zero,
-                          ),
-                          child: Text(
-                            'Check Rules',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: isDark
-                                  ? Colors.white
-                                  : const Color(0xFF334155),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-
-                        // Apply Online
-                        ElevatedButton(
-                          onPressed: () async {
-                            HapticFeedback.mediumImpact();
-                            final url = scheme.effectiveApplyUrl;
-                            if (url.isNotEmpty) {
-                              await UrlLauncherUtil.openUrl(context, url);
-                            } else {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => SchemeDetailScreen(
-                                    scheme: scheme,
-                                    profile: _profile,
-                                  ),
-                                ),
-                              );
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0066CC),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 7),
-                            minimumSize: Size.zero,
-                            elevation: 0,
-                          ),
-                          child: const Text(
-                            'Apply Online',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    Text('View scheme details',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF0066CC),
+                        )),
+                    const SizedBox(width: 4),
+                    Icon(Icons.arrow_forward_rounded,
+                        size: 14,
+                        color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF0066CC)),
                   ],
                 ),
               ],
@@ -2142,6 +1929,18 @@ class _GovernmentSchemesEntryScreenState
           ),
         ),
       ),
+    );
+  }
+
+  Widget _schemeTag(String label, Color foreground, Color background) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(label,
+          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: foreground)),
     );
   }
 
@@ -2203,173 +2002,6 @@ class _GovernmentSchemesEntryScreenState
           ),
         ],
       ),
-    );
-  }
-
-  // ─── PROFILE TAB ────────────────────────────────────────────────────────
-  Widget _buildProfileTab() {
-    return ProfileSetupScreen(
-      initialProfile: _profile,
-      onProfileSaved: _updateProfileFromSetup,
-    );
-  }
-
-  // ─── DRAWER ─────────────────────────────────────────────────────────────
-  Widget _buildDrawer() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Drawer(
-      backgroundColor: isDark ? const Color(0xFF0F1E36) : Colors.white,
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0066CC),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.account_balance_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Government Schemes',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(),
-            _buildDrawerTile(
-              icon: Icons.search_rounded,
-              title: 'Discover Schemes',
-              onTap: () {
-                Navigator.pop(context);
-                _tabController.animateTo(0);
-              },
-            ),
-            _buildDrawerTile(
-              icon: Icons.person_rounded,
-              title: 'My Profile',
-              onTap: () {
-                Navigator.pop(context);
-                _tabController.animateTo(1);
-              },
-            ),
-            const Divider(),
-            _buildDrawerTile(
-              icon: Icons.bookmark_rounded,
-              title: 'Saved Schemes',
-              badge: '${_service.bookmarks.length}',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SchemeTrackerScreen()),
-                ).then((_) => setState(() {}));
-              },
-            ),
-            _buildDrawerTile(
-              icon: Icons.track_changes_rounded,
-              title: 'Application Tracker',
-              badge: '${_service.pendingCount}',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SchemeTrackerScreen()),
-                ).then((_) => setState(() {}));
-              },
-            ),
-            _buildDrawerTile(
-              icon: Icons.compare_arrows_rounded,
-              title: 'Compare Schemes',
-              badge: '${_service.compareIds.length}',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SchemeCompareScreen()),
-                ).then((_) => setState(() {}));
-              },
-            ),
-            _buildDrawerTile(
-              icon: Icons.analytics_rounded,
-              title: 'Analytics & Insights',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SchemeAnalyticsScreen(profile: _profile),
-                  ),
-                );
-              },
-            ),
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                '${SchemeDatabase.schemes.length} schemes across India',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDrawerTile({
-    required IconData icon,
-    required String title,
-    String? badge,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Icon(icon, size: 20),
-      title: Text(title,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (badge != null && badge != '0')
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFDBEAFE),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                badge,
-                style: const TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0066CC),
-                ),
-              ),
-            ),
-          const SizedBox(width: 4),
-          const Icon(Icons.arrow_forward_ios_rounded,
-              size: 13, color: Color(0xFF94A3B8)),
-        ],
-      ),
-      onTap: onTap,
     );
   }
 }
