@@ -19,7 +19,8 @@ void main() {
     expect(find.text('Legal Risk'), findsWidgets);
     expect(find.text('Bill & GST'), findsWidgets);
     expect(find.text('Live Translate'), findsWidgets);
-    expect(find.text('Scanner Hub'), findsWidgets);
+    expect(find.text('Food & Medicine'), findsWidgets);
+    expect(find.text('Govt Schemes'), findsWidgets);
   });
 
   testWidgets('Tapping Bill & GST card opens Bill Analyzer screen', (WidgetTester tester) async {

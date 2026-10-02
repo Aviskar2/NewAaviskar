@@ -465,8 +465,8 @@ Rs. 10.00
       await AppSettings.setApiKey('');
       // Falls back to the compile-time constant baked into ApiConfig.
       expect(ApiConfig.effectiveApiKey, ApiConfig.openRouterApiKey);
-      expect(ApiConfig.hasApiKey, isTrue,
-          reason: 'compile-time key is configured in this build');
+      expect(ApiConfig.hasApiKey, ApiConfig.openRouterApiKey.isNotEmpty,
+          reason: 'compile-time key is configured if non-empty');
       expect(AppSettings.maskedApiKey, 'Not configured');
     });
 

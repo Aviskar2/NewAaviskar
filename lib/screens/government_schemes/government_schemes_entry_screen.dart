@@ -501,24 +501,6 @@ class _GovernmentSchemesEntryScreenState
     });
   }
 
-  void _updateProfileFromSetup(CitizenProfile newProfile) {
-    setState(() {
-      _profile = newProfile;
-      if (newProfile.state.isNotEmpty) _filterState = newProfile.state;
-      if (newProfile.occupation != null) {
-        _filterOccupation = _mapProfileOccupationToFilter(newProfile.occupation!);
-      }
-      _filterBPL = newProfile.isBPL;
-      _filterFarmer = newProfile.isFarmer;
-      _filterSCST = newProfile.isSCST;
-      _filterPwD = newProfile.isDisabled;
-      _filterMinority = newProfile.isMinority;
-      _filterStudent = newProfile.isStudent;
-      _filterWomen = newProfile.isWoman;
-      _appliedSchemes = _computeMatchingSchemes();
-      _resetPagination();
-    });
-  }
 
   List<SchemeMatchResult> get _filteredSchemes {
     var list = _appliedSchemes;
@@ -563,82 +545,6 @@ class _GovernmentSchemesEntryScreenState
     return list.where((r) => r.scheme.category == category).length;
   }
 
-  // Helper getters for card highlights
-  String _getKeyBenefit(GovernmentScheme scheme) {
-    if (scheme.benefits.isNotEmpty) {
-      final b = scheme.benefits.first;
-      if (b.contains('₹')) {
-        final match = RegExp(
-          r'₹[\d,]+(?:\s*(?:lakh|crore|per year|/\s*year|/\s*month|/\s*family))?',
-          caseSensitive: false,
-        ).firstMatch(b);
-        if (match != null) return match.group(0)!;
-      }
-      return b.length > 24 ? '${b.substring(0, 22)}...' : b;
-    }
-    return 'Financial Support';
-  }
-
-  String _getTargetGroup(GovernmentScheme scheme) {
-    if (scheme.eligibility.description != null &&
-        scheme.eligibility.description!.isNotEmpty) {
-      final desc = scheme.eligibility.description!;
-      return desc.length > 22 ? '${desc.substring(0, 20)}...' : desc;
-    }
-    if (scheme.eligibility.occupations.isNotEmpty) {
-      return scheme.eligibility.occupations.first;
-    }
-    if (scheme.eligibility.isFarmerRequired) return 'Farmers';
-    if (scheme.eligibility.isStudentRequired) return 'Students';
-    if (scheme.eligibility.isBPLRequired) return 'BPL / Antyodaya';
-    if (scheme.eligibility.isSCSTRequired) return 'SC / ST Families';
-    if (scheme.eligibility.gender == EligibilityGender.female) {
-      return 'Women / Girls';
-    }
-    return 'All Citizens';
-  }
-
-  String _getDeliveryMode(GovernmentScheme scheme) {
-    final text =
-        '${scheme.name} ${scheme.description} ${scheme.plainLanguageSummary}'
-            .toLowerCase();
-    if (text.contains('cashless')) return 'Cashless';
-    if (text.contains('dbt') ||
-        text.contains('bank transfer') ||
-        text.contains('direct income')) {
-      return 'Direct DBT';
-    }
-    if (text.contains('subsidy')) return 'Subsidy';
-    if (text.contains('loan') || text.contains('credit')) return 'Credit / Loan';
-    if (text.contains('pension')) return 'Monthly Pension';
-    if (text.contains('insurance')) return 'Insurance Cover';
-    if (text.contains('scholarship')) return 'Scholarship';
-    if (text.contains('pucca house') || text.contains('housing')) return 'Grant';
-    return 'Direct DBT';
-  }
-
-  String _getCategoryTag(GovernmentScheme scheme) {
-    switch (scheme.category) {
-      case SchemeCategory.health:
-        return 'Health Coverage';
-      case SchemeCategory.agriculture:
-        return 'Direct Income';
-      case SchemeCategory.housing:
-        return 'Pucca Housing';
-      case SchemeCategory.education:
-        return 'Education';
-      case SchemeCategory.finance:
-        return 'Finance';
-      case SchemeCategory.pension:
-        return 'Pension';
-      case SchemeCategory.insurance:
-        return 'Insurance';
-      case SchemeCategory.womenChild:
-        return 'Women Welfare';
-      default:
-        return scheme.category.label;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1894,12 +1800,14 @@ class _GovernmentSchemesEntryScreenState
                           : const Color(0xFFF3E8FF),
                     ),
                     const SizedBox(width: 6),
-                    _schemeTag(
-                      scheme.category.label,
-                      const Color(0xFFB45309),
-                      const Color(0xFFFFFBEB),
+                    Flexible(
+                      child: _schemeTag(
+                        scheme.category.label,
+                        const Color(0xFFB45309),
+                        const Color(0xFFFFFBEB),
+                      ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 6),
                     if (result.score > 0.4)
                       Text('${result.matchPercent.round()}% match',
                           style: const TextStyle(

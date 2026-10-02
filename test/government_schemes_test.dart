@@ -55,7 +55,7 @@ void main() {
   });
 
   group('Government Schemes Redesigned UI Tests', () {
-    testWidgets('Renders top bar, search box, quick tools strip, and eligibility matcher',
+    testWidgets('Renders top bar, search box, and eligibility matcher',
         (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 5000));
 
@@ -68,25 +68,16 @@ void main() {
 
       // Top App Bar
       expect(find.text('Government Schemes'), findsOneWidget);
-      expect(find.text('Set Profile'), findsOneWidget);
+      expect(find.text('Saved schemes'), findsOneWidget);
 
       // Search Box
       expect(find.textContaining('Search 147+ schemes'), findsOneWidget);
 
-      // Quick Tools Strip
-      expect(find.text('Saved'), findsOneWidget);
-      expect(find.text('Tracker'), findsOneWidget);
-      expect(find.text('Compare'), findsOneWidget);
-      expect(find.text('Insights'), findsOneWidget);
+      // Matcher trigger
+      expect(find.textContaining('Personalize results'), findsOneWidget);
 
-      // Compact Eligibility Matcher
-      expect(find.text('Eligibility & Benefit Matcher'), findsOneWidget);
-      expect(find.text('Reset All'), findsOneWidget);
-      expect(find.textContaining('Matching Schemes'), findsWidgets);
-
-      // Check Rules and Apply Online buttons on cards (display first 10 cards initially)
-      expect(find.text('Check Rules'), findsNWidgets(10));
-      expect(find.text('Apply Online'), findsNWidgets(10));
+      // View details button on cards (display first 10 cards initially)
+      expect(find.text('View scheme details'), findsNWidgets(10));
 
       // Verify unwanted secondary texts are completely removed
       expect(find.text('0 schemes'), findsNothing);
@@ -113,11 +104,11 @@ void main() {
       // No My Profile tab in the UI
       expect(find.text('My Profile'), findsNothing);
 
-      // Set Profile button is present in the header
-      expect(find.text('Set Profile'), findsOneWidget);
+      // Saved schemes button is present in the header
+      expect(find.text('Saved schemes'), findsOneWidget);
     });
 
-    testWidgets('Tapping Set Profile opens ProfileSetupScreen',
+    testWidgets('Tapping Personalize results expands inline eligibility matcher',
         (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 1600));
 
@@ -128,23 +119,27 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Set Profile'));
+      await tester.tap(find.textContaining('Personalize results'));
       await tester.pumpAndSettle();
 
-      // Profile screen form is visible
-      expect(find.text('Full Name'), findsOneWidget);
-      expect(find.text('Save & Match Schemes'), findsOneWidget);
+      expect(find.text('Eligibility & Benefit Matcher'), findsOneWidget);
+      expect(find.text('Reset All'), findsOneWidget);
+      expect(find.textContaining('Matching Schemes'), findsWidgets);
     });
 
     testWidgets('More Filters section is collapsed by default and expands with social categories',
         (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
 
       await tester.pumpWidget(
         const MaterialApp(
           home: GovernmentSchemesEntryScreen(),
         ),
       );
+      await tester.pumpAndSettle();
+
+      // Tap Personalize results to expand matcher
+      await tester.tap(find.textContaining('Personalize results'));
       await tester.pumpAndSettle();
 
       // Social category chips should NOT be visible while collapsed
@@ -178,7 +173,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Exactly 10 cards initially
-      expect(find.text('Check Rules'), findsNWidgets(10));
+      expect(find.text('View scheme details'), findsNWidgets(10));
 
       // Tap "Scroll or tap for more"
       final tapForMore = find.textContaining('Scroll or tap for more');
@@ -188,7 +183,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Now 20 cards are rendered
-      expect(find.text('Check Rules'), findsNWidgets(20));
+      expect(find.text('View scheme details'), findsNWidgets(20));
     });
 
     testWidgets('Searching schemes filters the displayed scheme list',
@@ -218,6 +213,10 @@ void main() {
           home: GovernmentSchemesEntryScreen(),
         ),
       );
+      await tester.pumpAndSettle();
+
+      // Tap Personalize results to open matcher
+      await tester.tap(find.textContaining('Personalize results'));
       await tester.pumpAndSettle();
 
       // Initially 147 schemes exist in the full database
