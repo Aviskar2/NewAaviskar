@@ -97,7 +97,7 @@ class MainNavigationState extends State<MainNavigation> {
           '• \u2696\uFE0F Legal Risk: Scan rental agreements, loans & contracts for scam clauses & unfair terms\n'
           '• \u{1F9FE} Bill & GST: Audit restaurant & grocery bills for illegal service charges & tax errors\n'
           '• \u{1F310} Live Translate: Translate documents & photos across 12+ Indian languages\n'
-          '• \u{1F50D} Scanner Hub: QR & barcodes, Jan Aushadhi medicine savings & FSSAI food safety\n'
+          '• \u{1F50D} Food & Medicine Safety: FSSAI food safety check & CDSCO Jan Aushadhi generic medicines\n'
           '• \u{1F3DB}\uFE0F Govt Schemes: Discover 30+ government schemes matched to your profile\n\n'
           'Tap any tool above or ask me any consumer protection question below!',
       'type': 'text',

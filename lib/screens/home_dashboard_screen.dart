@@ -6,6 +6,8 @@ import 'scanner/scanner_hub_screen.dart';
 import 'bill_analyzer/bill_analyzer_entry_screen.dart';
 import 'legal_analyzer/legal_analyzer_entry_screen.dart';
 import 'government_schemes/government_schemes_entry_screen.dart';
+import 'food_safety/food_safety_home_screen.dart';
+import 'medicine_safety/medicine_entry_screen.dart';
 import '../widgets/translation_mode_sheet.dart';
 
 /// Vibrant & Modern Home Dashboard inspired by Stitch Design System
@@ -79,16 +81,30 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         );
         break;
 
-      case 'scanner':
+      case 'food':
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ScannerHubScreen(
+            builder: (_) => const FoodSafetyHomeScreen(),
+          ),
+        );
+        break;
+
+      case 'medicine':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MedicineEntryScreen(
               ocrService: ocrService,
               historyService: historyService,
             ),
           ),
         );
+        break;
+
+      case 'scanner':
+      case 'safety':
+        _showFoodAndMedicineSafetySheet(context);
         break;
 
       case 'schemes':
@@ -100,6 +116,169 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
         );
         break;
     }
+  }
+
+  void _showFoodAndMedicineSafetySheet(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 12,
+          bottom: MediaQuery.of(context).padding.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'Food & Medicine Safety',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Select a safety scanner to audit labels and compliance:',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.white60 : const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildSafetyOptionTile(
+              context: ctx,
+              title: 'Food Safety Check',
+              subtitle: 'Scan ingredients, additives, allergens & check FSSAI regulations',
+              icon: Icons.restaurant_rounded,
+              color: const Color(0xFF0F766E),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openFeature('food');
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildSafetyOptionTile(
+              context: ctx,
+              title: 'Medicine Safety & Generics',
+              subtitle: 'Audit CDSCO drug schedules, Jan Aushadhi generic alternatives & mfg license',
+              icon: Icons.medication_rounded,
+              color: const Color(0xFF991B1B),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openFeature('medicine');
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildSafetyOptionTile(
+              context: ctx,
+              title: 'QR & Barcode Scanner',
+              subtitle: 'Universal packaging barcodes and QR verification',
+              icon: Icons.qr_code_scanner_rounded,
+              color: const Color(0xFF2563EB),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ScannerHubScreen(
+                      ocrService: widget.ocrService ?? OcrService(),
+                      historyService: widget.historyService ?? ScanHistoryService(),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSafetyOptionTile({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.15 : 0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: isDark ? 0.25 : 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.arrow_forward_ios_rounded, size: 14, color: color),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -248,11 +427,11 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
 
               const SizedBox(height: 12),
 
-              // Feature 2: Food and Medicine Safety (Fresh Mint / Emerald Accent)
+              // Feature 2: Food & Medicine Safety (Fresh Mint / Emerald Accent)
               _buildStitchFeatureCard(
-                category: 'Scanner Hub',
-                title: 'Food and Medicine Safety',
-                icon: Icons.medication_rounded,
+                category: 'Food & Medicine',
+                title: 'Food & Medicine Safety',
+                icon: Icons.health_and_safety_rounded,
                 gradientColors: isDark
                     ? [const Color(0xFF11261B), const Color(0xFF0C1D15)]
                     : [const Color(0xFFF4FAF6), const Color(0xFFE9F7EF)],
@@ -267,7 +446,11 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   '🧪 Expiry & Quality',
                 ],
                 chipBorderColor: isDark ? const Color(0xFF26543D) : const Color(0xFFC0E7CF),
-                onTap: () => _openFeature('scanner'),
+                chipCallbacks: {
+                  '🥗 Food Safety (FSSAI)': () => _openFeature('food'),
+                  '💊 Generic Meds (80% Off)': () => _openFeature('medicine'),
+                },
+                onTap: () => _openFeature('safety'),
               ),
 
               const SizedBox(height: 12),
@@ -447,6 +630,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     required Color categoryTextColor,
     required List<String> chips,
     required Color chipBorderColor,
+    Map<String, VoidCallback>? chipCallbacks,
     required VoidCallback onTap,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -564,14 +748,17 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 spacing: 6,
                 runSpacing: 6,
                 children: chips.map((chipText) {
-                  return Container(
+                  final callback = chipCallbacks?[chipText];
+                  final chipWidget = Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
                     decoration: BoxDecoration(
                       color: isDark ? const Color(0xFF1E293B) : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: chipBorderColor,
-                        width: 1.0,
+                        color: callback != null
+                            ? iconColor.withValues(alpha: isDark ? 0.6 : 0.4)
+                            : chipBorderColor,
+                        width: callback != null ? 1.2 : 1.0,
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -581,15 +768,45 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                         ),
                       ],
                     ),
-                    child: Text(
-                      chipText,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? const Color(0xFFE2E8F0) : const Color(0xFF334155),
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          chipText,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: callback != null ? FontWeight.w600 : FontWeight.w500,
+                            color: callback != null
+                                ? (isDark ? Colors.white : iconColor)
+                                : (isDark ? const Color(0xFFE2E8F0) : const Color(0xFF334155)),
+                          ),
+                        ),
+                        if (callback != null) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 11,
+                            color: isDark ? Colors.white70 : iconColor,
+                          ),
+                        ],
+                      ],
                     ),
                   );
+
+                  if (callback != null) {
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: callback,
+                        borderRadius: BorderRadius.circular(20),
+                        splashColor: iconColor.withValues(alpha: 0.15),
+                        highlightColor: iconColor.withValues(alpha: 0.08),
+                        child: chipWidget,
+                      ),
+                    );
+                  }
+
+                  return chipWidget;
                 }).toList(),
               ),
             ],

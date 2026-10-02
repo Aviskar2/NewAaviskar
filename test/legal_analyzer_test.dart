@@ -7,7 +7,9 @@ import 'package:scan_sure/widgets/legal_analyzer/highlighted_document_paper.dart
 import 'package:scan_sure/core/legal/models/legal_clause.dart';
 import 'package:scan_sure/core/legal/models/legal_document_type.dart';
 import 'package:scan_sure/core/legal/models/legal_finding.dart';
-import 'package:scan_sure/services/legal/clause_extraction_service.dart';
+import 'package:scan_sure/core/legal/models/ocr_document.dart';
+import 'package:scan_sure/services/legal/pipeline/clause_segmentation_service.dart';
+import 'package:scan_sure/services/legal/pipeline/deterministic_fallback_engine.dart';
 import 'package:scan_sure/services/legal/document_anomaly_service.dart';
 import 'package:scan_sure/services/legal/indian_law_rag_service.dart';
 import 'package:scan_sure/services/legal/legal_document_classifier.dart';
@@ -18,7 +20,8 @@ import 'package:scan_sure/services/legal/live_legal_update_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late LegalDocumentClassifier classifier;
-  late ClauseExtractionService clauseService;
+  late ClauseSegmentationService segmentationService;
+  late DeterministicFallbackEngine fallbackEngine;
   late DocumentAnomalyService anomalyService;
   late IndianLawRagService ragService;
   late LegalRiskEngine riskEngine;
@@ -27,12 +30,18 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     classifier = LegalDocumentClassifier();
-    clauseService = ClauseExtractionService();
+    segmentationService = ClauseSegmentationService();
+    fallbackEngine = DeterministicFallbackEngine();
     anomalyService = DocumentAnomalyService();
     ragService = IndianLawRagService();
     riskEngine = LegalRiskEngine();
     orchestrator = LegalOrchestrator();
   });
+
+  List<LegalFinding> extractFindingsHelper(OcrDocument doc, [LegalDocumentType docType = LegalDocumentType.otherOrUnknown]) {
+    final clauses = segmentationService.segmentDocument(doc.rawText, doc: doc);
+    return fallbackEngine.analyze(clauses: clauses, doc: doc, docType: docType).findings;
+  }
 
   group('Legal Document Classifier', () {
     test('Classifies Residential Rental Agreement', () {
@@ -75,7 +84,7 @@ Employee Agreement:
 The Employee shall not engage in any competing business or work for any competitor for 2 years post-termination.
 ''';
       final doc = orchestrator.createDocumentFromText(text);
-      final findings = clauseService.extractFindings(doc);
+      final findings = extractFindingsHelper(doc);
 
       expect(findings.any((f) => f.clauseType == LegalClauseType.nonCompeteRestraint), isTrue);
       final nonCompete = findings.firstWhere((f) => f.clauseType == LegalClauseType.nonCompeteRestraint);
@@ -90,7 +99,7 @@ Tenant Agreement:
 In the event of delay, the tenant shall pay a penalty of Rs. 50,000 plus interest @ 24% per annum.
 ''';
       final doc = orchestrator.createDocumentFromText(text);
-      final findings = clauseService.extractFindings(doc);
+      final findings = extractFindingsHelper(doc);
 
       expect(findings.any((f) => f.clauseType == LegalClauseType.penaltyAndDamages), isTrue);
       final penalty = findings.firstWhere((f) => f.clauseType == LegalClauseType.penaltyAndDamages);
@@ -104,7 +113,7 @@ Company reserves the right to terminate immediately without notice or cause.
 Contractor shall indemnify and hold harmless against all claims and damages regardless of negligence.
 ''';
       final doc = orchestrator.createDocumentFromText(text);
-      final findings = clauseService.extractFindings(doc);
+      final findings = extractFindingsHelper(doc);
 
       expect(findings.any((f) => f.clauseType == LegalClauseType.unilateralTermination), isTrue);
       expect(findings.any((f) => f.clauseType == LegalClauseType.unlimitedIndemnity), isTrue);
@@ -150,7 +159,7 @@ EMPLOYMENT AGREEMENT:
 3. Employee shall indemnify and hold harmless against all losses regardless of negligence.
 ''';
       final doc = orchestrator.createDocumentFromText(text);
-      final findings = clauseService.extractFindings(doc);
+      final findings = extractFindingsHelper(doc);
       final anomalies = anomalyService.analyzeAnomalies(doc);
       final risk = riskEngine.evaluate(findings, anomalies, doc);
 
@@ -167,7 +176,7 @@ Both parties agree to protect proprietary data with reasonable care.
 Term is 2 years. Governed by the Indian Contract Act, 1872.
 ''';
       final doc = orchestrator.createDocumentFromText(text);
-      final findings = clauseService.extractFindings(doc);
+      final findings = extractFindingsHelper(doc);
       final anomalies = anomalyService.analyzeAnomalies(doc);
       final risk = riskEngine.evaluate(findings, anomalies, doc);
 
@@ -285,14 +294,12 @@ Between Rajesh (Lessor) and Suresh (Lessee).
         ),
       );
 
-      // Verify legend bar displays count of flagged clauses
-      expect(find.textContaining('Flagged Clauses Highlighted in Paper'), findsOneWidget);
+      // Verify legend bar displays count of issues (Section 67 & 68)
+      expect(find.textContaining('of ${result.findings.length} issues'), findsOneWidget);
 
-      // Verify risk alert labels are rendered
-      expect(find.text('RISK ALERT'), findsWidgets);
-
-      // Verify tapping a highlighted clause triggers callback
-      await tester.tap(find.text('RISK ALERT').first);
+      // Verify tapping a highlighted clause or issue card triggers callback
+      expect(find.textContaining('Tap for details'), findsWidgets);
+      await tester.tap(find.textContaining('Tap for details').first);
       await tester.pump();
 
       expect(tappedFinding, isNotNull);

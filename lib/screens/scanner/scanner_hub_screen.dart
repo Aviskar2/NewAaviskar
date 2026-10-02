@@ -52,7 +52,7 @@ class _ScannerHubScreenState extends State<ScannerHubScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Universal Scanner & Safety Hub',
+          'Food & Product Safety Hub',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
@@ -76,7 +76,7 @@ class _ScannerHubScreenState extends State<ScannerHubScreen>
                 ),
                 Tab(
                   icon: Icon(Icons.verified_user_rounded, size: 22),
-                  text: 'Product Scanner',
+                  text: 'Product Safety',
                 ),
               ],
             ),

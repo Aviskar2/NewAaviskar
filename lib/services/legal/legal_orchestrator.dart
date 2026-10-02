@@ -1,137 +1,241 @@
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
-import '../../config/api_config.dart';
+import '../../core/legal/models/document_analysis_status.dart';
+import '../../core/legal/models/document_anomaly.dart';
 import '../../core/legal/models/legal_analysis_result.dart';
 import '../../core/legal/models/legal_document_type.dart';
 import '../../core/legal/models/legal_finding.dart';
 import '../../core/legal/models/ocr_document.dart';
 import '../../models/scan_result_model.dart';
-import 'clause_extraction_service.dart';
+import 'backend/document_analysis_backend_client.dart';
 import 'document_anomaly_service.dart';
-import 'gemini_legal_analysis_service.dart';
 import 'indian_law_rag_service.dart';
 import 'legal_document_classifier.dart';
 import 'legal_risk_engine.dart';
 import 'live_legal_update_service.dart';
-import 'local_legal_llm_service.dart';
+import 'pipeline/clause_segmentation_service.dart';
+import 'pipeline/controlled_legal_database_service.dart';
+import 'pipeline/deterministic_fallback_engine.dart';
+import 'pipeline/document_chunker.dart';
+import 'pipeline/document_highlight_mapper.dart';
+import 'pipeline/text_normalization_service.dart';
 
+/// Complete Document Risk Analysis Pipeline (Sections 32 through 56).
+///
+/// Implements the 11-step pipeline:
+/// Step 1: Document upload
+/// Step 2: OCR / text extraction
+/// Step 3: Text cleaning and normalization
+/// Step 4: Document classification
+/// Step 5: Clause segmentation
+/// Step 6: AI analysis & chunking via secure backend
+/// Step 7: Evidence extraction & controlled Indian law verification
+/// Step 8: Evidence-first dynamic risk scoring
+/// Step 9: Separate confidence evaluation
+/// Step 10: Return structured result
+/// Step 11: Display concise result in UI
 class LegalOrchestrator {
+  final TextNormalizationService _normalizationService = TextNormalizationService();
   final LegalDocumentClassifier _classifier = LegalDocumentClassifier();
-  final ClauseExtractionService _clauseService = ClauseExtractionService();
+  final ClauseSegmentationService _segmentationService = ClauseSegmentationService();
+  final DeterministicFallbackEngine _fallbackEngine = DeterministicFallbackEngine();
   final DocumentAnomalyService _anomalyService = DocumentAnomalyService();
   final IndianLawRagService _ragService = IndianLawRagService();
-  final LocalLegalLlmService _llmService = LocalLegalLlmService();
   final LegalRiskEngine _riskEngine = LegalRiskEngine();
   final LiveLegalUpdateService _liveUpdateService = LiveLegalUpdateService();
-  final GeminiLegalAnalysisService _geminiLegalService = GeminiLegalAnalysisService();
+  final ControlledLegalDatabaseService _legalDb = ControlledLegalDatabaseService();
+  final DocumentAnalysisBackendClient _backendClient = DocumentAnalysisBackendClient();
+  final DocumentChunker _chunker = const DocumentChunker();
+  final DocumentHighlightMapper _highlightMapper = const DocumentHighlightMapper();
 
   IndianLawRagService get ragService => _ragService;
   LiveLegalUpdateService get liveUpdateService => _liveUpdateService;
+  TextNormalizationService get normalizationService => _normalizationService;
+  ClauseSegmentationService get segmentationService => _segmentationService;
 
-  /// Analyzes a scanned OcrDocument through the complete Indian Legal Risk pipeline.
-  ///
-  /// [imagePaths] — Optional list of image file paths for direct Gemini multimodal analysis.
-  /// When provided, Gemini will perform visual analysis on the document images in addition
-  /// to analyzing the extracted text.
+  /// Analyzes an [OcrDocument] through the complete Indian Legal Risk pipeline.
   Future<LegalAnalysisResult> analyze(
     OcrDocument doc, {
     LegalDocumentType? forcedType,
     bool enableAiEnhancement = true,
     List<String>? imagePaths,
+    String? backendBaseUrl,
   }) async {
-    // 0. Ensure dynamic laws are loaded and auto-sync in background once every 24h
+    final stopwatch = Stopwatch()..start();
+
+    // 0. Ensure dynamic laws are loaded and auto-sync in background
     await _liveUpdateService.initialize();
     _liveUpdateService.syncIfNeeded();
 
-    // 1. Classification
-    final classification = _classifier.classify(doc.rawText);
+    // STEP 3: Text cleaning and normalization
+    final normResult = _normalizationService.normalize(doc.rawText);
+    final cleanedText = normResult.text;
+
+    // STEP 4: Document classification
+    final classification = _classifier.classify(cleanedText);
     final docType = forcedType ?? classification.type;
 
-    // 2. Deterministic Clause Extraction with Bounding Box mapping
-    final deterministicFindings = _clauseService.extractFindings(doc);
+    // Generate stable document hash and analysis ID (Section 48)
+    final docHash = cleanedText.hashCode.toRadixString(16).padLeft(8, '0');
+    final analysisId = 'an_${DateTime.now().millisecondsSinceEpoch}_$docHash';
 
-    // 3. Document Authenticity & Anomaly checks
-    final deterministicAnomalies = _anomalyService.analyzeAnomalies(doc);
+    // Check for critically poor OCR quality upfront (Section 41)
+    if (normResult.isPoorQuality && cleanedText.length < 50) {
+      stopwatch.stop();
+      return LegalAnalysisResult(
+        document: doc,
+        documentType: docType,
+        documentTypeConfidence: classification.confidence,
+        overallRiskScore: 0.0,
+        overallSeverity: LegalRiskSeverity.safe,
+        riskBreakdown: const RiskBreakdown(
+          legalRisk: 0.0,
+          financialRisk: 0.0,
+          terminationRisk: 0.0,
+          documentAnomalyRisk: 0.0,
+        ),
+        findings: [],
+        anomalies: [],
+        plainSummary: 'Analysis incomplete: The document text quality was insufficient for reliable analysis.',
+        executiveLegalSummary: 'Instrument unreadable due to severe OCR corruption or missing text.',
+        analyzedAt: DateTime.now(),
+        analysisId: analysisId,
+        documentHash: docHash,
+        confidenceLevel: DocumentAnalysisConfidence.insufficientEvidence,
+        status: DocumentAnalysisStatus.poorOcrQuality,
+        analysisMethod: 'AI-assisted document analysis',
+        statusMessage: 'The document text quality was insufficient for reliable analysis.',
+      );
+    }
 
-    // 4. AI Enhancement — Prioritize NVIDIA NIM if configured, else Gemini -> fallback LLM
-    AiLegalEnhancement? aiEnhancement;
+    // STEP 5: Clause segmentation with stable IDs (clause_001, ...)
+    final clauses = _segmentationService.segmentDocument(cleanedText, doc: doc);
+
+    // STEP 6: AI Analysis & Deterministic Hybrid
+    List<LegalFinding> combinedFindings = [];
+    List<DocumentAnomaly> combinedAnomalies = [];
+    DocumentConsistencyChecks checks = const DocumentConsistencyChecks();
+    String? aiModelUsed;
+    bool isAiEnhanced = false;
+
+    // Run deterministic structural/anomaly engine
+    final fallbackResult = _fallbackEngine.analyze(
+      clauses: clauses,
+      doc: doc,
+      docType: docType,
+    );
+    final docAnomalies = _anomalyService.analyzeAnomalies(doc);
+    combinedAnomalies = [...docAnomalies, ...fallbackResult.anomalies];
+    checks = fallbackResult.consistencyChecks;
+
+    // Attempt AI Enhancement via secure backend client if enabled
     if (enableAiEnhancement) {
-      final isNvidia =
-          ApiConfig.aiActive && ApiConfig.effectiveApiKey.startsWith('nvapi-');
-      if (isNvidia) {
-        // 4a. Prioritize NVIDIA NIM for document analyzer
-        try {
-          aiEnhancement = await _llmService.analyze(doc.rawText, docType);
-        } catch (e) {
-          debugPrintThrottled('NVIDIA NIM document analysis error: $e');
+      try {
+        final client = backendBaseUrl != null
+            ? DocumentAnalysisBackendClient(backendBaseUrl: backendBaseUrl)
+            : _backendClient;
+
+        // Long document chunking (Section 44)
+        final chunks = _chunker.createChunks(clauses);
+        if (chunks.length > 1) {
+          debugPrint('[LegalOrchestrator] Processing large document in ${chunks.length} chunks...');
         }
 
-        // 4b. Fallback to Gemini if NVIDIA NIM fails
-        if (aiEnhancement == null) {
-          try {
-            aiEnhancement = await _geminiLegalService
-                .analyzeDocument(
-                  rawText: doc.rawText,
-                  docType: docType,
-                  imagePaths: imagePaths,
-                )
-                .timeout(const Duration(seconds: 30));
-          } catch (e) {
-            debugPrintThrottled('Gemini legal analysis error: $e');
-          }
-        }
-      } else {
-        // 4a. Try Gemini AI first (supports multimodal image analysis)
-        try {
-          aiEnhancement = await _geminiLegalService
-              .analyzeDocument(
-                rawText: doc.rawText,
-                docType: docType,
-                imagePaths: imagePaths,
-              )
-              .timeout(const Duration(seconds: 30));
-        } catch (e) {
-          debugPrintThrottled('Gemini legal analysis error: $e');
-        }
+        final aiResult = await client.analyzeDocument(
+          documentText: cleanedText,
+          documentType: docType.name,
+          clauses: clauses,
+          language: 'en',
+          country: 'IN',
+        );
 
-        // 4b. Fallback to existing LLM pipeline if Gemini fails
-        if (aiEnhancement == null) {
-          try {
-            aiEnhancement = await _llmService.analyze(doc.rawText, docType);
-          } catch (_) {}
+        if (aiResult.isSuccessful) {
+          isAiEnhanced = true;
+          aiModelUsed = aiResult.modelUsed;
+          combinedFindings.addAll(aiResult.findings);
+          checks = aiResult.checks;
+        } else {
+          // Graceful fallback to deterministic engine without fake 90% (Section 47)
+          debugPrint('[LegalOrchestrator] Backend unavailable. Falling back to deterministic engine.');
+          combinedFindings.addAll(fallbackResult.findings);
         }
+      } catch (e) {
+        debugPrint('[LegalOrchestrator] AI analysis error: $e. Falling back to deterministic engine.');
+        combinedFindings.addAll(fallbackResult.findings);
       }
+    } else {
+      // Deterministic offline pipeline
+      combinedFindings.addAll(fallbackResult.findings);
     }
 
-    // Ingest any newly discovered dynamic statutory citations
-    if (aiEnhancement != null) {
-      for (final finding in aiEnhancement.aiDiscoveredFindings) {
-        for (final citation in finding.statutoryBasis) {
-          await _liveUpdateService.registerAndPersistNewLaw(citation);
-        }
+    // STEP 7: Evidence extraction & Controlled Legal Matching (Section 45)
+    final verifiedFindings = <LegalFinding>[];
+    for (final f in combinedFindings) {
+      final verifiedCitations = <StatutoryCitation>[];
+      for (final citation in f.statutoryBasis) {
+        verifiedCitations.add(_legalDb.verifyOrFlag(
+          rawActName: citation.actName,
+          rawSection: citation.section,
+          providedTitle: citation.title,
+          relevanceExplanation: citation.description,
+        ));
       }
+
+      verifiedFindings.add(LegalFinding(
+        id: f.id,
+        clauseId: f.clauseId,
+        clauseType: f.clauseType,
+        severity: f.severity,
+        title: f.title,
+        simpleExplanation: f.simpleExplanation,
+        legalExplanation: f.legalExplanation,
+        rawExcerpt: f.rawExcerpt,
+        pageIndex: f.pageIndex,
+        startOffset: f.startOffset,
+        endOffset: f.endOffset,
+        scoreContribution: f.scoreContribution,
+        category: f.category,
+        evidence: f.evidence ?? f.rawExcerpt,
+        boundingBox: f.boundingBox,
+        statutoryBasis: verifiedCitations.isNotEmpty ? verifiedCitations : f.statutoryBasis,
+        recommendedAction: f.recommendedAction,
+        confidence: f.confidence,
+      ));
     }
 
-    // Merge Findings & Anomalies
-    final allFindings = [
-      ...deterministicFindings,
-      if (aiEnhancement != null) ...aiEnhancement.aiDiscoveredFindings,
-    ];
+    // STEP 7.5: Map findings to exact document highlights & coordinates (Sections 58, 59, 63, 71, 72, 81)
+    final mappedFindings = _highlightMapper.mapFindings(
+      document: doc,
+      findings: verifiedFindings,
+      clauses: clauses,
+    );
 
-    final allAnomalies = [
-      ...deterministicAnomalies,
-      if (aiEnhancement != null) ...aiEnhancement.aiDiscoveredAnomalies,
-    ];
+    // STEP 8 & 9: Evidence-based Risk Scoring & Confidence Evaluation (Section 39 & 40)
+    final riskEval = _riskEngine.evaluate(
+      mappedFindings,
+      combinedAnomalies,
+      doc,
+      ocrQualityScore: normResult.ocrQualityScore,
+      docType: docType,
+    );
 
-    // 5. Evaluate Multi-Factor Risk
-    final riskEval = _riskEngine.evaluate(allFindings, allAnomalies, doc);
+    // STEP 10: Generate dual summaries
+    String plainSummary;
+    String legalSummary;
 
-    // 6. Summaries
-    final plainSummary = aiEnhancement?.plainLanguageSummary ??
-        'This ${docType.displayName} contains ${allFindings.length} detected legal clauses and ${allAnomalies.length} structural notes. Review highlighted terms before execution.';
+    if (riskEval.status == DocumentAnalysisStatus.noMaterialRisk) {
+      plainSummary = 'No significant risk indicators detected. Document provisions appear standard and balanced.';
+      legalSummary = 'Instrument reviewed under ${docType.governingActDescription}. No void restraints or unconscionable penalties identified.';
+    } else {
+      plainSummary = 'This ${docType.displayName} contains ${mappedFindings.length} flagged risk indicator(s) and ${combinedAnomalies.length} structural check(s). Review highlighted terms before execution.';
+      legalSummary = 'Instrument assessed under ${docType.governingActDescription}. Risk score: ${riskEval.overallScore.toInt()}/100 (${riskEval.severity.displayName.toUpperCase()}). Confidence: ${riskEval.confidence.displayName}.';
+    }
 
-    final legalSummary = aiEnhancement?.executiveLegalSummary ??
-        'Instrument reviewed under ${docType.governingActDescription}. Assessed risk level: ${riskEval.severity.displayName} (${riskEval.overallScore.toInt()}/100).';
+    stopwatch.stop();
+
+    // Section 55: Debug logging
+    debugPrint('[LegalOrchestrator] Completed Analysis $analysisId in ${stopwatch.elapsedMilliseconds}ms. '
+        'Score: ${riskEval.overallScore}, Findings: ${mappedFindings.length}, Confidence: ${riskEval.confidence.displayName}');
 
     return LegalAnalysisResult(
       document: doc,
@@ -140,18 +244,25 @@ class LegalOrchestrator {
       overallRiskScore: riskEval.overallScore,
       overallSeverity: riskEval.severity,
       riskBreakdown: riskEval.breakdown,
-      findings: allFindings,
-      anomalies: allAnomalies,
+      findings: mappedFindings,
+      anomalies: combinedAnomalies,
       plainSummary: plainSummary,
       executiveLegalSummary: legalSummary,
       analyzedAt: DateTime.now(),
-      aiModelUsed: aiEnhancement?.modelUsed,
-      isAiEnhanced: aiEnhancement != null,
+      aiModelUsed: aiModelUsed,
+      isAiEnhanced: isAiEnhanced,
+      analysisId: analysisId,
+      documentHash: docHash,
+      confidenceLevel: riskEval.confidence,
+      status: riskEval.status,
+      consistencyChecks: checks,
+      analysisMethod: isAiEnhanced ? 'AI-assisted document analysis' : 'Deterministic structural analysis',
+      statusMessage: riskEval.statusExplanation,
     );
   }
 
   /// Convenience helper to create an OcrDocument from raw string and image path.
-  OcrDocument createDocumentFromText(String text, {String? imagePath}) {
+  OcrDocument createDocumentFromText(String text, {String? imagePath, double confidence = 0.92}) {
     final lines = text
         .split('\n')
         .map((l) => l.trim())
@@ -167,7 +278,7 @@ class LegalOrchestrator {
 
       ocrLines.add(OcrLine(
         text: lines[i],
-        confidence: 0.92,
+        confidence: confidence,
         pageIndex: 0,
         boundingBox: OcrBoundingBox(
           left: 0.05,
@@ -183,18 +294,18 @@ class LegalOrchestrator {
       imagePath: imagePath,
       pageSize: const Size(1080, 1920),
       lines: ocrLines,
-      averageConfidence: 0.92,
+      averageConfidence: confidence,
     );
 
     return OcrDocument(
       pages: [page],
       rawText: text,
-      overallConfidence: 0.92,
+      overallConfidence: confidence,
       scannedAt: DateTime.now(),
     );
   }
 
-  /// Creates an OcrDocument from multiple OCR results (from multi-photo capture or gallery images).
+  /// Creates an OcrDocument from multiple OCR results.
   OcrDocument createDocumentFromOcrResults(List<OcrResult> results) {
     if (results.isEmpty) {
       return createDocumentFromText('');
@@ -268,7 +379,7 @@ class LegalOrchestrator {
     );
   }
 
-  /// Creates an OcrDocument from multiple text pages (e.g. extracted from multi-page PDF).
+  /// Creates an OcrDocument from multiple text pages.
   OcrDocument createDocumentFromTextPages(List<String> pageTexts, {List<String?>? imagePaths}) {
     if (pageTexts.isEmpty) {
       return createDocumentFromText('');

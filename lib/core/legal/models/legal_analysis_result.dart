@@ -1,3 +1,4 @@
+import 'document_analysis_status.dart';
 import 'document_anomaly.dart';
 import 'legal_document_type.dart';
 import 'legal_finding.dart';
@@ -15,6 +16,20 @@ class RiskBreakdown {
     required this.terminationRisk,
     required this.documentAnomalyRisk,
   });
+
+  Map<String, dynamic> toJson() => {
+    'legalRisk': legalRisk,
+    'financialRisk': financialRisk,
+    'terminationRisk': terminationRisk,
+    'documentAnomalyRisk': documentAnomalyRisk,
+  };
+
+  factory RiskBreakdown.fromJson(Map<String, dynamic> json) => RiskBreakdown(
+    legalRisk: (json['legalRisk'] as num?)?.toDouble() ?? 0.0,
+    financialRisk: (json['financialRisk'] as num?)?.toDouble() ?? 0.0,
+    terminationRisk: (json['terminationRisk'] as num?)?.toDouble() ?? 0.0,
+    documentAnomalyRisk: (json['documentAnomalyRisk'] as num?)?.toDouble() ?? 0.0,
+  );
 }
 
 class LegalAnalysisResult {
@@ -32,6 +47,15 @@ class LegalAnalysisResult {
   final String? aiModelUsed;
   final bool isAiEnhanced;
 
+  // New pipeline & transparency metadata (Sections 38, 40, 41, 48, 49)
+  final String analysisId;
+  final String documentHash;
+  final DocumentAnalysisConfidence confidenceLevel;
+  final DocumentAnalysisStatus status;
+  final DocumentConsistencyChecks consistencyChecks;
+  final String analysisMethod;
+  final String? statusMessage;
+
   const LegalAnalysisResult({
     required this.document,
     required this.documentType,
@@ -46,6 +70,13 @@ class LegalAnalysisResult {
     required this.analyzedAt,
     this.aiModelUsed,
     this.isAiEnhanced = false,
+    this.analysisId = 'an_default',
+    this.documentHash = '',
+    this.confidenceLevel = DocumentAnalysisConfidence.medium,
+    this.status = DocumentAnalysisStatus.completed,
+    this.consistencyChecks = const DocumentConsistencyChecks(),
+    this.analysisMethod = 'AI-assisted document analysis',
+    this.statusMessage,
   });
 
   List<LegalFinding> get highRiskFindings =>

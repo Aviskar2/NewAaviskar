@@ -7,6 +7,8 @@ import '../../services/product_safety/product_safety_orchestrator.dart';
 import '../../services/medicine_safety/medicine_safety_orchestrator.dart';
 import '../product_safety/product_safety_analysis_screen.dart';
 import '../medicine_safety/medicine_analysis_screen.dart';
+import '../medicine_safety/medicine_entry_screen.dart';
+import '../food_safety/food_safety_home_screen.dart';
 
 /// Unified Entry Screen for All Products.
 /// Automatically classifies scanned text into the correct product category
@@ -272,13 +274,36 @@ class _UniversalProductEntryScreenState extends State<UniversalProductEntryScree
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: const [
-                      _CategoryChip(label: '💊 Medicine', color: Color(0xFF991B1B)),
-                      _CategoryChip(label: '🥗 Food & Beverages', color: Color(0xFF0F766E)),
-                      _CategoryChip(label: '💄 Cosmetics', color: Color(0xFF7C3AED)),
-                      _CategoryChip(label: '🧴 Personal Care', color: Color(0xFF6D28D9)),
-                      _CategoryChip(label: '🏠 Household', color: Color(0xFFD97706)),
-                      _CategoryChip(label: '📱 Electronics', color: Color(0xFF2563EB)),
+                    children: [
+                      _CategoryChip(
+                        label: '💊 Medicine',
+                        color: const Color(0xFF991B1B),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => MedicineEntryScreen(
+                                ocrService: widget.ocrService,
+                                historyService: widget.historyService,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      _CategoryChip(
+                        label: '🥗 Food & Beverages',
+                        color: const Color(0xFF0F766E),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const FoodSafetyHomeScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      const _CategoryChip(label: '💄 Cosmetics', color: Color(0xFF7C3AED)),
+                      const _CategoryChip(label: '🧴 Personal Care', color: Color(0xFF6D28D9)),
+                      const _CategoryChip(label: '🏠 Household', color: Color(0xFFD97706)),
+                      const _CategoryChip(label: '📱 Electronics', color: Color(0xFF2563EB)),
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -361,25 +386,34 @@ class _UniversalProductEntryScreenState extends State<UniversalProductEntryScree
 class _CategoryChip extends StatelessWidget {
   final String label;
   final Color color;
+  final VoidCallback? onTap;
 
-  const _CategoryChip({required this.label, required this.color});
+  const _CategoryChip({
+    required this.label,
+    required this.color,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? 0.15 : 0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.15 : 0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
         ),
       ),
     );
